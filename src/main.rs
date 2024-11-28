@@ -106,8 +106,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-async fn get_reader_list(
+async fn fetch_readwise_data(
     debug: bool,
+    category: Option<&str>,
 ) -> Result<Vec<serde_json::Value>, Box<dyn std::error::Error>> {
     dotenv::dotenv().ok();
     let api_key = std::env::var("READWISE_API_KEY")?;
@@ -117,8 +118,16 @@ async fn get_reader_list(
 
     loop {
         let mut url = String::from("https://readwise.io/api/v3/list/");
+        if let Some(cat) = category {
+            url.push_str(&format!("?category={}", cat));
+        }
+
         if let Some(cursor) = next_cursor {
-            url.push_str(&format!("?pageCursor={}", cursor));
+            url.push_str(&format!(
+                "{}{}",
+                if category.is_some() { "&" } else { "?" },
+                format!("pageCursor={}", cursor)
+            ));
         }
 
         let response = client
@@ -149,87 +158,19 @@ async fn get_reader_list(
 
     Ok(all_results)
 }
+
+async fn get_reader_list(
+    debug: bool,
+) -> Result<Vec<serde_json::Value>, Box<dyn std::error::Error>> {
+    fetch_readwise_data(debug, None).await
+}
+
 async fn get_note_list(debug: bool) -> Result<Vec<serde_json::Value>, Box<dyn std::error::Error>> {
-    dotenv::dotenv().ok();
-    let api_key = std::env::var("READWISE_API_KEY")?;
-    let client = reqwest::Client::new();
-    let mut all_results = Vec::new();
-    let mut next_cursor = None;
-
-    loop {
-        let mut url = String::from("https://readwise.io/api/v3/list/?category=note");
-        if let Some(cursor) = next_cursor {
-            url.push_str(&format!("&pageCursor={}", cursor));
-        }
-
-        let response = client
-            .get(&url)
-            .header("Authorization", format!("Token {}", api_key))
-            .send()
-            .await?;
-
-        let data: serde_json::Value = response.json().await?;
-
-        if let Some(results) = data.get("results").and_then(|r| r.as_array()) {
-            all_results.extend(results.clone());
-        }
-
-        if debug {
-            break;
-        }
-
-        next_cursor = data
-            .get("nextPageCursor")
-            .and_then(|c| c.as_str())
-            .map(String::from);
-
-        if next_cursor.is_none() {
-            break;
-        }
-    }
-
-    Ok(all_results)
+    fetch_readwise_data(debug, Some("note")).await
 }
+
 async fn get_highlight_list(
     debug: bool,
 ) -> Result<Vec<serde_json::Value>, Box<dyn std::error::Error>> {
-    dotenv::dotenv().ok();
-    let api_key = std::env::var("READWISE_API_KEY")?;
-    let client = reqwest::Client::new();
-    let mut all_results = Vec::new();
-    let mut next_cursor = None;
-
-    loop {
-        let mut url = String::from("https://readwise.io/api/v3/list/?category=highlight");
-        if let Some(cursor) = next_cursor {
-            url.push_str(&format!("&pageCursor={}", cursor));
-        }
-
-        let response = client
-            .get(&url)
-            .header("Authorization", format!("Token {}", api_key))
-            .send()
-            .await?;
-
-        let data: serde_json::Value = response.json().await?;
-
-        if let Some(results) = data.get("results").and_then(|r| r.as_array()) {
-            all_results.extend(results.clone());
-        }
-
-        if debug {
-            break;
-        }
-
-        next_cursor = data
-            .get("nextPageCursor")
-            .and_then(|c| c.as_str())
-            .map(String::from);
-
-        if next_cursor.is_none() {
-            break;
-        }
-    }
-
-    Ok(all_results)
+    fetch_readwise_data(debug, Some("highlight")).await
 }
