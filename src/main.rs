@@ -3,9 +3,9 @@ use reqwest::Url;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let debug = true;
-    let use_notes = true; // New variable to control which function to use
+    let target = "highlights";
     
-    if use_notes {
+    if target == "notes" {
         let notes = get_note_list(debug).await?;
         for note in notes {
             let id = note.get("id")
@@ -30,7 +30,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("Content: {}", content);
             println!(); // Empty line between entries
         }
-    } else {
+    } else if target == "articles" {
         let results = get_reader_list(debug).await?;
         for item in results {
             if let Some(category) = item.get("category").and_then(|c| c.as_str()) {
@@ -68,6 +68,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
             }
+        }
+    } else if target == "highlights" {
+        let highlights = get_highlight_list(debug).await?;
+        for highlight in highlights {
+            let content = highlight.get("content")
+                .and_then(|c| c.as_str())
+                .expect("Highlight must have content");
+
+            let created_at = highlight.get("created_at")
+                .and_then(|c| c.as_str())
+                .expect("Highlight must have created_at");
+
+            let id = highlight.get("id")
+                .and_then(|i| i.as_str())
+                .expect("Highlight must have id");
+
+            let parent_id = highlight.get("parent_id")
+                .and_then(|p| p.as_str())
+                .expect("Highlight must have parent_id");
+
+            println!("Content: {}", content);
+            println!("Created at: {}", created_at);
+            println!("ID: {}", id);
+            println!("Parent ID: {}", parent_id);
+            println!(); // Empty line between entries
         }
     }
     Ok(())
@@ -127,6 +152,49 @@ async fn get_note_list(
 
     loop {
         let mut url = String::from("https://readwise.io/api/v3/list/?category=note");
+        if let Some(cursor) = next_cursor {
+            url.push_str(&format!("&pageCursor={}", cursor));
+        }
+
+        let response = client
+            .get(&url)
+            .header("Authorization", format!("Token {}", api_key))
+            .send()
+            .await?;
+
+        let data: serde_json::Value = response.json().await?;
+
+        if let Some(results) = data.get("results").and_then(|r| r.as_array()) {
+            all_results.extend(results.clone());
+        }
+
+        if debug {
+            break;
+        }
+
+        next_cursor = data
+            .get("nextPageCursor")
+            .and_then(|c| c.as_str())
+            .map(String::from);
+
+        if next_cursor.is_none() {
+            break;
+        }
+    }
+
+    Ok(all_results)
+}
+async fn get_highlight_list(
+    debug: bool,
+) -> Result<Vec<serde_json::Value>, Box<dyn std::error::Error>> {
+    dotenv::dotenv().ok();
+    let api_key = std::env::var("READWISE_API_KEY")?;
+    let client = reqwest::Client::new();
+    let mut all_results = Vec::new();
+    let mut next_cursor = None;
+
+    loop {
+        let mut url = String::from("https://readwise.io/api/v3/list/?category=highlight");
         if let Some(cursor) = next_cursor {
             url.push_str(&format!("&pageCursor={}", cursor));
         }
