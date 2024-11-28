@@ -4,23 +4,27 @@ use reqwest::Url;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let debug = true;
     let target = "highlights";
-    
+
     if target == "notes" {
         let notes = get_note_list(debug).await?;
         for note in notes {
-            let id = note.get("id")
+            let id = note
+                .get("id")
                 .and_then(|i| i.as_str())
                 .expect("Note must have an id");
-            
-            let parent_id = note.get("parent_id")
+
+            let parent_id = note
+                .get("parent_id")
                 .and_then(|p| p.as_str())
                 .expect("Note must have a parent_id");
 
-            let saved_at = note.get("saved_at")
+            let saved_at = note
+                .get("saved_at")
                 .and_then(|s| s.as_str())
                 .expect("Note must have saved_at");
 
-            let content = note.get("content")
+            let content = note
+                .get("content")
                 .and_then(|c| c.as_str())
                 .expect("Note must have content");
 
@@ -72,19 +76,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else if target == "highlights" {
         let highlights = get_highlight_list(debug).await?;
         for highlight in highlights {
-            let content = highlight.get("content")
+            let content = highlight
+                .get("content")
                 .and_then(|c| c.as_str())
                 .expect("Highlight must have content");
 
-            let created_at = highlight.get("created_at")
+            let created_at = highlight
+                .get("created_at")
                 .and_then(|c| c.as_str())
                 .expect("Highlight must have created_at");
 
-            let id = highlight.get("id")
+            let id = highlight
+                .get("id")
                 .and_then(|i| i.as_str())
                 .expect("Highlight must have id");
 
-            let parent_id = highlight.get("parent_id")
+            let parent_id = highlight
+                .get("parent_id")
                 .and_then(|p| p.as_str())
                 .expect("Highlight must have parent_id");
 
@@ -141,9 +149,7 @@ async fn get_reader_list(
 
     Ok(all_results)
 }
-async fn get_note_list(
-    debug: bool,
-) -> Result<Vec<serde_json::Value>, Box<dyn std::error::Error>> {
+async fn get_note_list(debug: bool) -> Result<Vec<serde_json::Value>, Box<dyn std::error::Error>> {
     dotenv::dotenv().ok();
     let api_key = std::env::var("READWISE_API_KEY")?;
     let client = reqwest::Client::new();
