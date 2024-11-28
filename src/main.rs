@@ -1,8 +1,26 @@
+use reqwest::Url;
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let debug = true;
     let results = get_reader_list(debug).await?;
-    println!("{:#?}", results);
+    for item in results {
+        if let Some(category) = item.get("category").and_then(|c| c.as_str()) {
+            if category == "article" {
+                if let Some(url) = item.get("source_url").and_then(|u| u.as_str()) {
+                    if let Ok(parsed_url) = Url::parse(url) {
+                        let clean_url = format!(
+                            "{}://{}{}",
+                            parsed_url.scheme(),
+                            parsed_url.host_str().unwrap_or(""),
+                            parsed_url.path()
+                        );
+                        println!("{}", clean_url);
+                    }
+                }
+            }
+        }
+    }
     Ok(())
 }
 
