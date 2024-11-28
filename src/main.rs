@@ -15,7 +15,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             parsed_url.host_str().unwrap_or(""),
                             parsed_url.path()
                         );
-                        println!("{}", clean_url);
+
+                        let author = item
+                            .get("author")
+                            .and_then(|a| a.as_str())
+                            .unwrap_or("Unknown");
+
+                        let saved_at = item
+                            .get("saved_at")
+                            .and_then(|s| s.as_str())
+                            .unwrap_or("Unknown");
+
+                        let title = item
+                            .get("title")
+                            .and_then(|t| t.as_str())
+                            .unwrap_or("Unknown");
+
+                        println!("URL: {}", clean_url);
+                        println!("Author: {}", author);
+                        println!("Saved at: {}", saved_at);
+                        println!("Title: {}", title);
+                        println!(); // Empty line between entries
                     }
                 }
             }
