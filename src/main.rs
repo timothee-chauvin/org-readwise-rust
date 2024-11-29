@@ -86,10 +86,34 @@ impl Note {
     }
 }
 
+fn get_refs_from_db(
+    conn: &rusqlite::Connection,
+) -> Result<HashMap<String, String>, Box<dyn std::error::Error>> {
+    // Return a mapping from ref (the special URL format that org-roam uses) to node_id (the ID of the node where this ref is found)
+    let mut stmt = conn.prepare("SELECT ref, node_id FROM refs")?;
+    let existing_refs: HashMap<String, String> = stmt
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+        .filter_map(Result::ok)
+        .collect();
+    Ok(existing_refs)
+}
+
+fn get_nodes_from_db(
+    conn: &rusqlite::Connection,
+) -> Result<HashMap<String, (String, String)>, Box<dyn std::error::Error>> {
+    // Return a mapping from the ID of the node to the file where it is found and its title
+    let mut stmt = conn.prepare("SELECT id, file, title FROM nodes")?;
+    let nodes: HashMap<String, (String, String)> = stmt
+        .query_map([], |row| Ok((row.get(0)?, (row.get(1)?, row.get(2)?))))?
+        .filter_map(Result::ok)
+        .collect();
+    Ok(nodes)
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let start_time = std::time::Instant::now();
-    let target = "playground";
+    let target = "org";
     match target {
         "playground" => playground().await,
         "org" => {
@@ -98,31 +122,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let db_path = format!("{}/org-roam/org-roam.db", home_dir);
             let conn = rusqlite::Connection::open(db_path)?;
 
-            // Get all existing refs from database
-            let mut stmt = conn.prepare("SELECT ref, node_id FROM refs")?;
-            let existing_refs: std::collections::HashMap<String, String> = stmt
-                .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
-                .filter_map(Result::ok)
-                .map(|(url, node_id): (String, String)| {
-                    (url.trim_matches('"').to_string(), node_id)
-                })
-                .collect();
-
-            // Similarly, get all existing nodes, creating a mapping from id to file and title
-            let mut stmt = conn.prepare("SELECT id, file, title FROM nodes")?;
-            let existing_nodes: std::collections::HashMap<String, (String, String)> = stmt
-                .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
-                .filter_map(Result::ok)
-                .map(|(id, file, title): (String, String, String)| {
-                    (
-                        id,
-                        (
-                            file.trim_matches('"').to_string(),
-                            title.trim_matches('"').to_string(),
-                        ),
-                    )
-                })
-                .collect();
+            let existing_refs = get_refs_from_db(&conn)?;
+            let existing_nodes = get_nodes_from_db(&conn)?;
 
             let articles = get_article_list().await?;
             let highlights = get_highlight_list().await?;
@@ -221,14 +222,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             content.push_str("\n* Highlights\n");
 
                             for highlight in parent_highlights {
-                                if !highlight.content.is_empty() {
-                                    content.push_str(&format!("- {}\n", highlight.content));
-                                }
+                                content.push_str(&format!("- {}\n", highlight.content));
                             }
 
                             std::fs::write(&filename, &content)?;
                             println!("Created file: {}", filename);
-                            println!("Content:\n{}", content);
                         }
                     }
                 }
@@ -362,9 +360,11 @@ async fn get_note_list() -> Result<Vec<Note>, Box<dyn std::error::Error>> {
 
 async fn get_highlight_list() -> Result<Vec<Highlight>, Box<dyn std::error::Error>> {
     let json_results = fetch_readwise_data(Some("highlight")).await?;
-    let highlights = json_results
+    let highlights: Vec<Highlight> = json_results
         .into_iter()
         .filter_map(|value| Highlight::new(&value))
+        // There's a surprising number of empty highlights
+        .filter(|h| !h.content.is_empty())
         .collect();
     Ok(highlights)
 }
