@@ -40,10 +40,46 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 })
                 .collect();
 
-            // Get articles and check if they exist in database
-            let results = get_reader_list(debug).await?;
-            println!("Total articles found: {}", &results.len());
-            for item in results {
+            let articles = get_reader_list(debug).await?;
+            let highlights = get_highlight_list(debug).await?;
+            println!("Total articles found: {}", &articles.len());
+            println!("Total highlights found: {}", &highlights.len());
+
+            let mut found_parents = 0;
+            for item in &highlights {
+                let parent_id = item.get("parent_id").unwrap().as_str().unwrap();
+                let parent_url = articles
+                    .iter()
+                    .find(|article| article["id"].as_str() == Some(parent_id))
+                    .and_then(|article| article["source_url"].as_str())
+                    .map(String::from);
+
+                println!(
+                    "ID: {}",
+                    item.get("id").unwrap().as_str().unwrap().trim_matches('"')
+                );
+                println!("Parent ID: {}", parent_id);
+                if parent_url.is_some() {
+                    found_parents += 1;
+                    println!("found the parent: {}", parent_url.unwrap());
+                }
+                println!(
+                    "Content: {}",
+                    item.get("content")
+                        .unwrap()
+                        .as_str()
+                        .unwrap()
+                        .trim_matches('"')
+                );
+                println!();
+            }
+            println!(
+                "Found parents for {}/{} highlights",
+                found_parents,
+                highlights.len()
+            );
+
+            for item in articles {
                 if let Some(url) = item.get("source_url").and_then(|u| u.as_str()) {
                     if let Ok(parsed_url) = Url::parse(url) {
                         let clean_url = format!(
@@ -76,8 +112,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             let (file, title) = existing_nodes.get(node_id).unwrap();
                             println!("Corresponding node: {} - {}", file, title);
 
-                            let file_contents = std::fs::read_to_string(file)?;
-                            println!("Contents of corresponding node: {}", file_contents);
+                            // let file_contents = std::fs::read_to_string(file)?;
+                            // println!("Contents of corresponding node: {}", file_contents);
                         } else {
                             // println!("would create: {} with ref {}", filename, clean_url);
                         }
@@ -226,9 +262,9 @@ async fn fetch_readwise_data(
 
         if let Some(cursor) = next_cursor {
             url.push_str(&format!(
-                "{}{}",
+                "{}pageCursor={}",
                 if category.is_some() { "&" } else { "?" },
-                format!("pageCursor={}", cursor)
+                cursor
             ));
         }
 
