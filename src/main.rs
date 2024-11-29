@@ -11,6 +11,12 @@ fn get_refs_from_db(
     let existing_refs: HashMap<String, String> = stmt
         .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
         .filter_map(Result::ok)
+        .map(|(url, node_id): (String, String)| {
+            (
+                url.trim_matches('"').to_string(),
+                node_id.trim_matches('"').to_string(),
+            )
+        })
         .collect();
     Ok(existing_refs)
 }
@@ -23,6 +29,15 @@ fn get_nodes_from_db(
     let nodes: HashMap<String, (String, String)> = stmt
         .query_map([], |row| Ok((row.get(0)?, (row.get(1)?, row.get(2)?))))?
         .filter_map(Result::ok)
+        .map(|(id, (file, title)): (String, (String, String))| {
+            (
+                id.trim_matches('"').to_string(),
+                (
+                    file.trim_matches('"').to_string(),
+                    title.trim_matches('"').to_string(),
+                ),
+            )
+        })
         .collect();
     Ok(nodes)
 }
@@ -47,19 +62,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("Total articles found: {}", &articles.len());
             println!("Total highlights found: {}", &highlights.len());
 
+            println!("First article: {:?}", articles[0]);
+            println!("First highlight: {:?}", highlights[0]);
+            let first_ref = existing_refs.keys().next().unwrap();
+            println!(
+                "First ref: {:?} => {:?}",
+                first_ref,
+                existing_refs.get(first_ref).unwrap()
+            );
+            let first_node = existing_nodes.keys().next().unwrap();
+            println!(
+                "First node: {:?} => {:?}",
+                first_node,
+                existing_nodes.get(first_node).unwrap()
+            );
+
             let mut found_parents = 0;
             for highlight in &highlights {
                 let parent_id = highlight.parent_id.clone();
                 let parent_article = articles.iter().find(|article| article.id == parent_id);
 
-                println!("ID: {}", highlight.id);
-                println!("Parent ID: {}", parent_id);
-                if let Some(article) = parent_article {
+                if parent_article.is_some() {
                     found_parents += 1;
-                    println!("found the parent: {}", article.source_url);
                 }
-                println!("Content: {}", highlight.content);
-                println!();
             }
             println!(
                 "Found parents for {}/{} highlights",
@@ -77,35 +102,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .push(highlight);
             }
 
-            // Process each parent article that has highlights
-            for (parent_id, parent_highlights) in &highlights_by_parent {
-                // Find the parent article
-                if let Some(parent) = articles.iter().find(|a| a.id == *parent_id) {
-                    println!("\nHighlights for article {}:", parent_id);
-                    for highlight in parent_highlights {
-                        println!("- {}", highlight.content);
-                    }
-
-                    if let Ok(parsed_url) = Url::parse(&parent.source_url) {
-                        let clean_url = format!(
-                            "//{}{}",
-                            parsed_url.host_str().unwrap_or(""),
-                            parsed_url.path()
-                        );
-
-                        let filename = get_new_entry_filename(&parent.title);
-
-                        if let Some((existing_file, _)) = existing_refs
-                            .get(&clean_url)
-                            .and_then(|id| existing_nodes.get(id))
-                        {
-                            println!("Parent article is in file: {}", existing_file);
-                        } else {
-                            println!("Parent article would be created in: {}", filename);
-                        }
-                    }
-                }
-            }
             let mut articles_processed = 0;
             for (parent_id, parent_highlights) in highlights_by_parent.iter() {
                 // Find the parent article

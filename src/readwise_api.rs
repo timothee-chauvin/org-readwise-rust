@@ -27,6 +27,7 @@ impl Highlight {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct Article {
     pub id: String,
     pub source_url: String,
@@ -55,6 +56,7 @@ impl Article {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct Note {
     pub id: String,
     pub parent_id: String,
@@ -121,8 +123,11 @@ async fn fetch_readwise_data(
             .send()
             .await?;
 
-        println!("Request URL: {}", url);
-        println!("Cache Status: {:?}", response.headers().get("x-cache"));
+        println!(
+            "Cache {:?} {}",
+            response.headers().get("x-cache").unwrap(),
+            url
+        );
 
         let data: serde_json::Value = response.json().await?;
 
