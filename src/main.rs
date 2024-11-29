@@ -1,6 +1,7 @@
 use http_cache_reqwest::{CACacheManager, Cache, CacheMode, HttpCache, HttpCacheOptions};
 use reqwest::{Client, Url};
 use reqwest_middleware::ClientBuilder;
+use std::collections::HashMap;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -79,43 +80,64 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 highlights.len()
             );
 
-            for item in articles {
-                if let Some(url) = item.get("source_url").and_then(|u| u.as_str()) {
-                    if let Ok(parsed_url) = Url::parse(url) {
-                        let clean_url = format!(
-                            "//{}{}",
-                            parsed_url.host_str().unwrap_or(""),
-                            parsed_url.path()
+            // Group highlights by parent_id
+            let mut highlights_by_parent: HashMap<String, Vec<&serde_json::Value>> = HashMap::new();
+            for highlight in &highlights {
+                let parent_id = highlight
+                    .get("parent_id")
+                    .unwrap()
+                    .as_str()
+                    .unwrap()
+                    .to_string();
+                highlights_by_parent
+                    .entry(parent_id)
+                    .or_default()
+                    .push(highlight);
+            }
+
+            // Process each parent article that has highlights
+            for (parent_id, parent_highlights) in highlights_by_parent {
+                // Find the parent article
+                if let Some(parent) = articles
+                    .iter()
+                    .find(|a| a["id"].as_str() == Some(&parent_id))
+                {
+                    println!("\nHighlights for article {}:", parent_id);
+                    for highlight in parent_highlights {
+                        println!(
+                            "- {}",
+                            highlight
+                                .get("id")
+                                .unwrap()
+                                .as_str()
+                                .unwrap()
+                                .trim_matches('"')
                         );
+                    }
 
-                        let title = item
-                            .get("title")
-                            .and_then(|t| t.as_str())
-                            .unwrap_or("No title");
-
-                        let now = chrono::Local::now();
-                        let filename = format!(
-                            "{}/org-roam/{}-{}.org",
-                            home_dir,
-                            now.format("%Y%m%d%H%M%S"),
-                            slug::slugify(title)
-                        );
-
-                        if existing_refs.contains_key(&clean_url) {
-                            println!(
-                                "Ref already exists: {}, in node_id {}",
-                                clean_url,
-                                existing_refs.get(&clean_url).unwrap()
+                    if let Some(url) = parent.get("source_url").and_then(|u| u.as_str()) {
+                        if let Ok(parsed_url) = Url::parse(url) {
+                            let clean_url = format!(
+                                "//{}{}",
+                                parsed_url.host_str().unwrap_or(""),
+                                parsed_url.path()
                             );
-                            // Print the corresponding filename
-                            let node_id = existing_refs.get(&clean_url).unwrap();
-                            let (file, title) = existing_nodes.get(node_id).unwrap();
-                            println!("Corresponding node: {} - {}", file, title);
 
-                            // let file_contents = std::fs::read_to_string(file)?;
-                            // println!("Contents of corresponding node: {}", file_contents);
-                        } else {
-                            // println!("would create: {} with ref {}", filename, clean_url);
+                            let title = parent
+                                .get("title")
+                                .and_then(|t| t.as_str())
+                                .unwrap_or("No title");
+
+                            let filename = get_new_entry_filename(title);
+
+                            if let Some((existing_file, _)) = existing_refs
+                                .get(&clean_url)
+                                .and_then(|id| existing_nodes.get(id))
+                            {
+                                println!("Parent article is in file: {}", existing_file);
+                            } else {
+                                println!("Parent article would be created in: {}", filename);
+                            }
                         }
                     }
                 }
@@ -310,4 +332,15 @@ async fn get_highlight_list(
     debug: bool,
 ) -> Result<Vec<serde_json::Value>, Box<dyn std::error::Error>> {
     fetch_readwise_data(debug, Some("highlight")).await
+}
+
+fn get_new_entry_filename(title: &str) -> String {
+    let now = chrono::Local::now();
+    let home_dir = std::env::var("HOME").expect("HOME environment variable not set");
+    format!(
+        "{}/org-roam/{}-{}.org",
+        home_dir,
+        now.format("%Y%m%d%H%M%S"),
+        slug::slugify(title)
+    )
 }
