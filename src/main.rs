@@ -94,8 +94,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 })
                 .collect();
 
-            let articles_json = get_article_list().await?;
-            let articles: Vec<Article> = articles_json.iter().filter_map(Article::new).collect();
+            let articles = get_article_list().await?;
             let highlights = get_highlight_list().await?;
             println!("Total articles found: {}", &articles.len());
             println!("Total highlights found: {}", &highlights.len());
@@ -247,20 +246,14 @@ async fn playground() -> Result<(), Box<dyn std::error::Error>> {
             println!(); // Empty line between entries
         }
     } else if target == "articles" {
-        let results = get_article_list().await?;
-        for item in results {
-            if let Some(category) = item.get("category").and_then(|c| c.as_str()) {
-                if category == "article" {
-                    if let Some(article) = Article::new(&item) {
-                        println!("ID: {}", article.id);
-                        println!("URL: {}", article.source_url);
-                        println!("Author: {}", article.author);
-                        println!("Saved at: {}", article.saved_at);
-                        println!("Title: {}", article.title);
-                        println!(); // Empty line between entries
-                    }
-                }
-            }
+        let articles = get_article_list().await?;
+        for article in articles {
+            println!("ID: {}", article.id);
+            println!("URL: {}", article.source_url);
+            println!("Author: {}", article.author);
+            println!("Saved at: {}", article.saved_at);
+            println!("Title: {}", article.title);
+            println!(); // Empty line between entries
         }
     } else if target == "highlights" {
         let highlights = get_highlight_list().await?;
@@ -339,8 +332,13 @@ async fn fetch_readwise_data(
     Ok(all_results)
 }
 
-async fn get_article_list() -> Result<Vec<serde_json::Value>, Box<dyn std::error::Error>> {
-    fetch_readwise_data(Some("article")).await
+async fn get_article_list() -> Result<Vec<Article>, Box<dyn std::error::Error>> {
+    let json_results = fetch_readwise_data(Some("article")).await?;
+    let articles = json_results
+        .into_iter()
+        .filter_map(|value| Article::new(&value))
+        .collect();
+    Ok(articles)
 }
 
 async fn get_note_list() -> Result<Vec<serde_json::Value>, Box<dyn std::error::Error>> {
