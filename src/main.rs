@@ -3,7 +3,37 @@ use reqwest::Url;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let debug = true;
-    let target = "highlights";
+    let target = "org";
+    match target {
+        "playground" => playground(debug).await,
+        "org" => {
+            // First we'll get all the articles. For each, we'll create its slug URL based on the title,
+            // in the format "YYYYMMDDhhmmss-slugified_title.org", in the "~/org/roam" directory, if it doesn't already exist.
+            // For now, we'll debug by simply printing for each article, the name of the file that we would create.
+            let results = get_reader_list(debug).await?;
+            for item in results {
+                if let Some(title) = item.get("title").and_then(|t| t.as_str()) {
+                    // Get current time
+                    let now = chrono::Local::now();
+
+                    // Format filename as YYYYMMDDhhmmss-slugified_title.org
+                    let filename = format!(
+                        "{}-{}.org",
+                        now.format("%Y%m%d%H%M%S"),
+                        slug::slugify(title)
+                    );
+
+                    println!("Would create file: {}", filename);
+                }
+            }
+            Ok(())
+        }
+        _ => panic!("invalid target {}", target),
+    }
+}
+
+async fn playground(debug: bool) -> Result<(), Box<dyn std::error::Error>> {
+    let target = "articles";
 
     if target == "notes" {
         let notes = get_note_list(debug).await?;
