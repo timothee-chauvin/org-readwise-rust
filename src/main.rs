@@ -1,4 +1,6 @@
-use reqwest::Url;
+use reqwest::{Url, Client};
+use reqwest_middleware::ClientBuilder;
+use http_cache_reqwest::{Cache, CacheMode, CACacheManager, HttpCache, HttpCacheOptions};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -13,11 +15,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let conn = rusqlite::Connection::open(db_path)?;
 
             // Get all existing refs from database
-            let mut stmt = conn.prepare("SELECT ref FROM refs")?;
-            let existing_refs: Vec<String> = stmt
-                .query_map([], |row| row.get(0))?
+            let mut stmt = conn.prepare("SELECT ref, node_id FROM refs")?;
+            let existing_refs: std::collections::HashMap<String, String> = stmt
+                .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
                 .filter_map(Result::ok)
-                .map(|url: String| url.trim_matches('"').to_string())
+                .map(|(url, node_id): (String, String)| (url.trim_matches('"').to_string(), node_id))
                 .collect();
 
             // Get articles and check if they exist in database
@@ -44,8 +46,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             slug::slugify(title)
                         );
 
-                        if existing_refs.contains(&clean_url) {
-                            println!("Ref already exists: {}", clean_url);
+                        if existing_refs.contains_key(&clean_url) {
+                            println!(
+                                "Ref already exists: {}, in node_id {}",
+                                clean_url,
+                                existing_refs.get(&clean_url).unwrap()
+                            );
                         } else {
                             println!("would create: {} with ref {}", filename, clean_url);
                         }
@@ -174,7 +180,23 @@ async fn fetch_readwise_data(
 ) -> Result<Vec<serde_json::Value>, Box<dyn std::error::Error>> {
     dotenv::dotenv().ok();
     let api_key = std::env::var("READWISE_API_KEY")?;
-    let client = reqwest::Client::new();
+    println!(
+        "Current working directory: {:?}",
+        std::env::current_dir()?
+    );
+    println!(
+        "Cache should be at: {:?}",
+        std::env::current_dir()?.join("http-cacache")
+    );
+
+    let client = ClientBuilder::new(Client::new())
+        .with(Cache(HttpCache {
+            mode: CacheMode::IgnoreRules,
+            manager: CACacheManager::default(),
+            options: HttpCacheOptions::default(),
+    }))
+    .build();
+
     let mut all_results = Vec::new();
     let mut next_cursor = None;
 
@@ -197,6 +219,10 @@ async fn fetch_readwise_data(
             .header("Authorization", format!("Token {}", api_key))
             .send()
             .await?;
+
+        println!("Request URL: {}", url);
+        println!("Cache Status: {:?}", response.headers().get("x-cache"));
+        println!("Cache Hit: {:?}", response.headers().get("x-cache-hit"));
 
         let data: serde_json::Value = response.json().await?;
 
@@ -224,7 +250,7 @@ async fn fetch_readwise_data(
 async fn get_reader_list(
     debug: bool,
 ) -> Result<Vec<serde_json::Value>, Box<dyn std::error::Error>> {
-    fetch_readwise_data(debug, None).await
+    fetch_readwise_data(debug, Some("article")).await
 }
 
 async fn get_note_list(debug: bool) -> Result<Vec<serde_json::Value>, Box<dyn std::error::Error>> {
