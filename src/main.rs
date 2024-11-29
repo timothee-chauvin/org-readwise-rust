@@ -1,6 +1,6 @@
-use reqwest::{Url, Client};
+use http_cache_reqwest::{CACacheManager, Cache, CacheMode, HttpCache, HttpCacheOptions};
+use reqwest::{Client, Url};
 use reqwest_middleware::ClientBuilder;
-use http_cache_reqwest::{Cache, CacheMode, CACacheManager, HttpCache, HttpCacheOptions};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -19,7 +19,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let existing_refs: std::collections::HashMap<String, String> = stmt
                 .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
                 .filter_map(Result::ok)
-                .map(|(url, node_id): (String, String)| (url.trim_matches('"').to_string(), node_id))
+                .map(|(url, node_id): (String, String)| {
+                    (url.trim_matches('"').to_string(), node_id)
+                })
+                .collect();
+
+            // Similarly, get all existing nodes, creating a mapping from id to file and title
+            let mut stmt = conn.prepare("SELECT id, file, title FROM nodes")?;
+            let mut existing_nodes: std::collections::HashMap<String, (String, String)> = stmt
+                .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+                .filter_map(Result::ok)
+                .map(|(id, file, title): (String, String, String)| {
+                    (
+                        id,
+                        (
+                            file.trim_matches('"').to_string(),
+                            title.trim_matches('"').to_string(),
+                        ),
+                    )
+                })
                 .collect();
 
             // Get articles and check if they exist in database
@@ -53,8 +71,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 clean_url,
                                 existing_refs.get(&clean_url).unwrap()
                             );
+                            // Print the corresponding filename
+                            let node_id = existing_refs.get(&clean_url).unwrap();
+                            let (file, title) = existing_nodes.get(node_id).unwrap();
+                            println!("Corresponding node: {} - {}", file, title);
+
+                            let file_contents = std::fs::read_to_string(file)?;
+                            println!("Contents of corresponding node: {}", file_contents);
                         } else {
-                            println!("would create: {} with ref {}", filename, clean_url);
+                            // println!("would create: {} with ref {}", filename, clean_url);
                         }
                     }
                 }
@@ -187,8 +212,8 @@ async fn fetch_readwise_data(
             mode: CacheMode::IgnoreRules,
             manager: CACacheManager::default(),
             options: HttpCacheOptions::default(),
-    }))
-    .build();
+        }))
+        .build();
 
     let mut all_results = Vec::new();
     let mut next_cursor = None;
