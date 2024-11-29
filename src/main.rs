@@ -55,11 +55,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let articles = get_article_list().await?;
     let highlights = get_highlight_list().await?;
+    let notes = get_note_list().await?;
     println!("Total articles found: {}", &articles.len());
     println!("Total highlights found: {}", &highlights.len());
-
+    println!("Total notes found: {}", &notes.len());
     println!("First article: {:?}", articles[0]);
     println!("First highlight: {:?}", highlights[0]);
+    println!("First note: {:?}", notes[0]);
     let first_ref = existing_refs.keys().next().unwrap();
     println!(
         "First ref: {:?} => {:?}",
@@ -73,28 +75,46 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         existing_nodes.get(first_node).unwrap()
     );
 
-    let mut found_parents = 0;
+    let mut found_highlight_parents = 0;
     for highlight in &highlights {
         let parent_id = highlight.parent_id.clone();
         let parent_article = articles.iter().find(|article| article.id == parent_id);
 
         if parent_article.is_some() {
-            found_parents += 1;
+            found_highlight_parents += 1;
         }
     }
     println!(
-        "Found parents for {}/{} highlights",
-        found_parents,
+        "Found parent articles for {}/{} highlights",
+        found_highlight_parents,
         highlights.len()
     );
 
-    // Group highlights by parent_id
+    let mut found_note_parents = 0;
+    for note in &notes {
+        let parent_id = note.parent_id.clone();
+        let parent_highlight = highlights
+            .iter()
+            .find(|highlight| highlight.id == parent_id);
+
+        if parent_highlight.is_some() {
+            found_note_parents += 1;
+        }
+    }
+    println!(
+        "Found parent highlights for {}/{} notes",
+        found_note_parents,
+        notes.len()
+    );
+
     let highlights_by_parent = highlight_list_to_map(highlights);
+    let notes_by_parent = note_list_to_map(notes);
 
     let mut articles_processed = 0;
-    for (parent_id, parent_highlights) in highlights_by_parent.iter() {
+
+    for parent_id in highlights_by_parent.keys().cloned() {
         // Find the parent article
-        if let Some(parent) = articles.iter().find(|a| a.id == *parent_id) {
+        if let Some(parent) = articles.iter().find(|a| a.id == parent_id) {
             if let Ok(parsed_url) = Url::parse(&parent.source_url) {
                 let clean_url = format!(
                     "{}{}",
@@ -113,7 +133,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .and_then(|id| existing_nodes.get(id))
                     .is_none()
                 {
-                    // Create file and write highlights
+                    // Create file and write highlights and notes
                     let mut content = String::new();
                     content.push_str(":PROPERTIES:\n");
                     content.push_str(&format!(":ID: {}\n", uuid));
@@ -121,10 +141,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     content.push_str(":END:\n");
                     content.push_str(&format!("#+TITLE: {}\n", parent.title));
                     content.push_str(&format!("#+roam_key: {}\n", full_url));
-                    content.push_str("\n* Highlights\n");
 
-                    for highlight in parent_highlights {
-                        content.push_str(&format!("- {}\n", highlight.content));
+                    // Add highlights if they exist
+                    if let Some(entry_highlights) = highlights_by_parent.get(&parent_id) {
+                        content.push_str("\n* Highlights\n");
+                        for highlight in entry_highlights {
+                            content.push_str(&format!("- {}\n", highlight.content));
+                            if let Some(note) = notes_by_parent.get(&highlight.id) {
+                                println!("Note: {:?}", note);
+                                content.push_str(&format!("=> note: {}\n", note.content));
+                            }
+                        }
                     }
 
                     std::fs::write(&filename, &content)?;

@@ -188,3 +188,11 @@ pub fn highlight_list_to_map(highlight_list: Vec<Highlight>) -> HashMap<String, 
     }
     map
 }
+
+pub fn note_list_to_map(note_list: Vec<Note>) -> HashMap<String, Note> {
+    // Return a map of parent_id (a highlight id) to the corresponding note
+    note_list
+        .into_iter()
+        .map(|note| (note.parent_id.clone(), note))
+        .collect()
+}
