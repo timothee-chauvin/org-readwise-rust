@@ -1,6 +1,7 @@
 use http_cache_reqwest::{CACacheManager, Cache, CacheMode, HttpCache, HttpCacheOptions};
 use reqwest::Client;
 use reqwest_middleware::ClientBuilder;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 pub struct Highlight {
@@ -175,4 +176,15 @@ pub async fn get_highlight_list() -> Result<Vec<Highlight>, Box<dyn std::error::
         .filter(|h| !h.content.is_empty())
         .collect();
     Ok(highlights)
+}
+
+pub fn highlight_list_to_map(highlight_list: Vec<Highlight>) -> HashMap<String, Vec<Highlight>> {
+    // Return a map of parent_id to a list of the corresponding highlights
+    let mut map: HashMap<String, Vec<Highlight>> = HashMap::new();
+    for highlight in highlight_list {
+        map.entry(highlight.parent_id.clone())
+            .or_default()
+            .push(highlight);
+    }
+    map
 }

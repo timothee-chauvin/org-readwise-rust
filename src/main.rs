@@ -89,14 +89,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     // Group highlights by parent_id
-    let mut highlights_by_parent: HashMap<String, Vec<&Highlight>> = HashMap::new();
-    for highlight in &highlights {
-        let parent_id = highlight.parent_id.clone();
-        highlights_by_parent
-            .entry(parent_id)
-            .or_default()
-            .push(highlight);
-    }
+    let highlights_by_parent = highlight_list_to_map(highlights);
 
     let mut articles_processed = 0;
     for (parent_id, parent_highlights) in highlights_by_parent.iter() {
