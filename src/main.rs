@@ -5,6 +5,7 @@ use std::collections::HashMap;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let start_time = std::time::Instant::now();
     let debug = true;
     let target = "org";
     match target {
@@ -203,6 +204,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 articles_processed += 1;
             }
             println!("\nProcessed {} articles", articles_processed);
+            let duration = start_time.elapsed();
+            println!("Time taken: {:?}", duration);
             Ok(())
         }
         _ => panic!("invalid target {}", target),
