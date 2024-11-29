@@ -59,10 +59,9 @@ impl Article {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let start_time = std::time::Instant::now();
-    let debug = true;
     let target = "org";
     match target {
-        "playground" => playground(debug).await,
+        "playground" => playground().await,
         "org" => {
             // Connect to SQLite database
             let home_dir = std::env::var("HOME").expect("HOME environment variable not set");
@@ -81,7 +80,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             // Similarly, get all existing nodes, creating a mapping from id to file and title
             let mut stmt = conn.prepare("SELECT id, file, title FROM nodes")?;
-            let mut existing_nodes: std::collections::HashMap<String, (String, String)> = stmt
+            let existing_nodes: std::collections::HashMap<String, (String, String)> = stmt
                 .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
                 .filter_map(Result::ok)
                 .map(|(id, file, title): (String, String, String)| {
@@ -95,9 +94,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 })
                 .collect();
 
-            let articles_json = get_reader_list(debug).await?;
+            let articles_json = get_article_list().await?;
             let articles: Vec<Article> = articles_json.iter().filter_map(Article::new).collect();
-            let highlights = get_highlight_list(debug).await?;
+            let highlights = get_highlight_list().await?;
             println!("Total articles found: {}", &articles.len());
             println!("Total highlights found: {}", &highlights.len());
 
@@ -215,11 +214,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 }
 
-async fn playground(debug: bool) -> Result<(), Box<dyn std::error::Error>> {
+async fn playground() -> Result<(), Box<dyn std::error::Error>> {
     let target = "articles";
 
     if target == "notes" {
-        let notes = get_note_list(debug).await?;
+        let notes = get_note_list().await?;
         for note in notes {
             let id = note
                 .get("id")
@@ -248,32 +247,23 @@ async fn playground(debug: bool) -> Result<(), Box<dyn std::error::Error>> {
             println!(); // Empty line between entries
         }
     } else if target == "articles" {
-        let results = get_reader_list(debug).await?;
+        let results = get_article_list().await?;
         for item in results {
             if let Some(category) = item.get("category").and_then(|c| c.as_str()) {
                 if category == "article" {
                     if let Some(article) = Article::new(&item) {
-                        if let Ok(parsed_url) = Url::parse(&article.source_url) {
-                            let clean_url = format!(
-                                "{}://{}{}",
-                                parsed_url.scheme(),
-                                parsed_url.host_str().unwrap_or(""),
-                                parsed_url.path()
-                            );
-
-                            println!("ID: {}", article.id);
-                            println!("URL: {}", clean_url);
-                            println!("Author: {}", article.author);
-                            println!("Saved at: {}", article.saved_at);
-                            println!("Title: {}", article.title);
-                            println!(); // Empty line between entries
-                        }
+                        println!("ID: {}", article.id);
+                        println!("URL: {}", article.source_url);
+                        println!("Author: {}", article.author);
+                        println!("Saved at: {}", article.saved_at);
+                        println!("Title: {}", article.title);
+                        println!(); // Empty line between entries
                     }
                 }
             }
         }
     } else if target == "highlights" {
-        let highlights = get_highlight_list(debug).await?;
+        let highlights = get_highlight_list().await?;
         for highlight in highlights {
             let content = highlight.content;
 
@@ -291,7 +281,6 @@ async fn playground(debug: bool) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 async fn fetch_readwise_data(
-    debug: bool,
     category: Option<&str>,
 ) -> Result<Vec<serde_json::Value>, Box<dyn std::error::Error>> {
     dotenv::dotenv().ok();
@@ -350,18 +339,16 @@ async fn fetch_readwise_data(
     Ok(all_results)
 }
 
-async fn get_reader_list(
-    debug: bool,
-) -> Result<Vec<serde_json::Value>, Box<dyn std::error::Error>> {
-    fetch_readwise_data(debug, Some("article")).await
+async fn get_article_list() -> Result<Vec<serde_json::Value>, Box<dyn std::error::Error>> {
+    fetch_readwise_data(Some("article")).await
 }
 
-async fn get_note_list(debug: bool) -> Result<Vec<serde_json::Value>, Box<dyn std::error::Error>> {
-    fetch_readwise_data(debug, Some("note")).await
+async fn get_note_list() -> Result<Vec<serde_json::Value>, Box<dyn std::error::Error>> {
+    fetch_readwise_data(Some("note")).await
 }
 
-async fn get_highlight_list(debug: bool) -> Result<Vec<Highlight>, Box<dyn std::error::Error>> {
-    let json_results = fetch_readwise_data(debug, Some("highlight")).await?;
+async fn get_highlight_list() -> Result<Vec<Highlight>, Box<dyn std::error::Error>> {
+    let json_results = fetch_readwise_data(Some("highlight")).await?;
     let highlights = json_results
         .into_iter()
         .filter_map(|value| Highlight::new(&value))
