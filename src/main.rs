@@ -96,11 +96,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
 
             // Process each parent article that has highlights
-            for (parent_id, parent_highlights) in highlights_by_parent {
+            for (parent_id, parent_highlights) in &highlights_by_parent {
                 // Find the parent article
                 if let Some(parent) = articles
                     .iter()
-                    .find(|a| a["id"].as_str() == Some(&parent_id))
+                    .find(|a| a["id"].as_str() == Some(parent_id))
                 {
                     println!("\nHighlights for article {}:", parent_id);
                     for highlight in parent_highlights {
@@ -142,6 +142,67 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
             }
+            let mut articles_processed = 0;
+            for (parent_id, parent_highlights) in highlights_by_parent.iter() {
+                // Find the parent article
+                if let Some(parent) = articles
+                    .iter()
+                    .find(|a| a["id"].as_str() == Some(parent_id))
+                {
+                    if let Some(url) = parent.get("source_url").and_then(|u| u.as_str()) {
+                        if let Ok(parsed_url) = Url::parse(url) {
+                            let clean_url = format!(
+                                "{}{}",
+                                parsed_url.host_str().unwrap_or(""),
+                                parsed_url.path()
+                            );
+                            let roam_db_url = format!("//{}", clean_url);
+                            let full_url = format!("{}://{}", parsed_url.scheme(), clean_url);
+
+                            let title = parent
+                                .get("title")
+                                .and_then(|t| t.as_str())
+                                .unwrap_or("No title");
+
+                            let filename = get_new_entry_filename(title);
+
+                            let uuid = uuid::Uuid::new_v4().to_string();
+                            // Skip if file already exists in org-roam
+                            if existing_refs
+                                .get(&roam_db_url)
+                                .and_then(|id| existing_nodes.get(id))
+                                .is_none()
+                            {
+                                // Create file and write highlights
+                                let mut content = String::new();
+                                content.push_str(":PROPERTIES:\n");
+                                content.push_str(&format!(":ID: {}\n", uuid));
+                                content.push_str(&format!(":ROAM_REFS: {}\n", full_url));
+                                content.push_str(":END:\n");
+                                content.push_str(&format!("#+TITLE: {}\n", title));
+                                content.push_str(&format!("#+roam_key: {}\n", full_url));
+                                content.push_str("\n* Highlights\n");
+
+                                for highlight in parent_highlights {
+                                    if let Some(text) =
+                                        highlight.get("content").and_then(|t| t.as_str())
+                                    {
+                                        if !text.is_empty() {
+                                            content.push_str(&format!("- {}\n", text));
+                                        }
+                                    }
+                                }
+
+                                std::fs::write(&filename, &content)?;
+                                println!("Created file: {}", filename);
+                                println!("Content:\n{}", content);
+                            }
+                        }
+                    }
+                }
+                articles_processed += 1;
+            }
+            println!("\nProcessed {} articles", articles_processed);
             Ok(())
         }
         _ => panic!("invalid target {}", target),
@@ -338,7 +399,7 @@ fn get_new_entry_filename(title: &str) -> String {
     let now = chrono::Local::now();
     let home_dir = std::env::var("HOME").expect("HOME environment variable not set");
     format!(
-        "{}/org-roam/{}-{}.org",
+        "{}/org/roam/{}-{}.org",
         home_dir,
         now.format("%Y%m%d%H%M%S"),
         slug::slugify(title)
