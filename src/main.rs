@@ -24,6 +24,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             // Get articles and check if they exist in database
             let results = get_reader_list(debug).await?;
+            println!("Total articles found: {}", &results.len());
             for item in results {
                 if let Some(url) = item.get("source_url").and_then(|u| u.as_str()) {
                     if let Ok(parsed_url) = Url::parse(url) {
@@ -180,14 +181,6 @@ async fn fetch_readwise_data(
 ) -> Result<Vec<serde_json::Value>, Box<dyn std::error::Error>> {
     dotenv::dotenv().ok();
     let api_key = std::env::var("READWISE_API_KEY")?;
-    println!(
-        "Current working directory: {:?}",
-        std::env::current_dir()?
-    );
-    println!(
-        "Cache should be at: {:?}",
-        std::env::current_dir()?.join("http-cacache")
-    );
 
     let client = ClientBuilder::new(Client::new())
         .with(Cache(HttpCache {
@@ -222,16 +215,11 @@ async fn fetch_readwise_data(
 
         println!("Request URL: {}", url);
         println!("Cache Status: {:?}", response.headers().get("x-cache"));
-        println!("Cache Hit: {:?}", response.headers().get("x-cache-hit"));
 
         let data: serde_json::Value = response.json().await?;
 
         if let Some(results) = data.get("results").and_then(|r| r.as_array()) {
             all_results.extend(results.clone());
-        }
-
-        if debug {
-            break;
         }
 
         next_cursor = data
