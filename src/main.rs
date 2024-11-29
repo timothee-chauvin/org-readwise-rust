@@ -48,6 +48,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 parsed_url.path()
                             );
 
+                            let id = item
+                                .get("id")
+                                .and_then(|i| i.as_str())
+                                .expect("Article must have an id");
+
                             let author = item
                                 .get("author")
                                 .and_then(|a| a.as_str())
@@ -63,6 +68,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 .and_then(|t| t.as_str())
                                 .expect("Article must have a title");
 
+                            println!("ID: {}", id);
                             println!("URL: {}", clean_url);
                             println!("Author: {}", author);
                             println!("Saved at: {}", saved_at);
