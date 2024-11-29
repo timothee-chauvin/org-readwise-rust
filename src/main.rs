@@ -28,6 +28,34 @@ impl Highlight {
     }
 }
 
+struct Article {
+    id: String,
+    source_url: String,
+    title: String,
+    author: String,
+    saved_at: String,
+}
+
+impl Article {
+    fn new(value: &serde_json::Value) -> Option<Self> {
+        Some(Self {
+            id: value.get("id")?.as_str()?.trim_matches('"').to_string(),
+            source_url: value
+                .get("source_url")?
+                .as_str()?
+                .trim_matches('"')
+                .to_string(),
+            title: value.get("title")?.as_str()?.trim_matches('"').to_string(),
+            author: value.get("author")?.as_str()?.trim_matches('"').to_string(),
+            saved_at: value
+                .get("saved_at")?
+                .as_str()?
+                .trim_matches('"')
+                .to_string(),
+        })
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let start_time = std::time::Instant::now();
@@ -67,7 +95,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 })
                 .collect();
 
-            let articles = get_reader_list(debug).await?;
+            let articles_json = get_reader_list(debug).await?;
+            let articles: Vec<Article> = articles_json.iter().filter_map(Article::new).collect();
             let highlights = get_highlight_list(debug).await?;
             println!("Total articles found: {}", &articles.len());
             println!("Total highlights found: {}", &highlights.len());
@@ -75,17 +104,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut found_parents = 0;
             for highlight in &highlights {
                 let parent_id = highlight.parent_id.clone();
-                let parent_url = articles
-                    .iter()
-                    .find(|article| article["id"].as_str() == Some(&parent_id))
-                    .and_then(|article| article["source_url"].as_str())
-                    .map(String::from);
+                let parent_article = articles.iter().find(|article| article.id == parent_id);
 
                 println!("ID: {}", highlight.id);
                 println!("Parent ID: {}", parent_id);
-                if parent_url.is_some() {
+                if let Some(article) = parent_article {
                     found_parents += 1;
-                    println!("found the parent: {}", parent_url.unwrap());
+                    println!("found the parent: {}", article.source_url);
                 }
                 println!("Content: {}", highlight.content);
                 println!();
@@ -109,38 +134,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Process each parent article that has highlights
             for (parent_id, parent_highlights) in &highlights_by_parent {
                 // Find the parent article
-                if let Some(parent) = articles
-                    .iter()
-                    .find(|a| a["id"].as_str() == Some(parent_id))
-                {
+                if let Some(parent) = articles.iter().find(|a| a.id == *parent_id) {
                     println!("\nHighlights for article {}:", parent_id);
                     for highlight in parent_highlights {
                         println!("- {}", highlight.content);
                     }
 
-                    if let Some(url) = parent.get("source_url").and_then(|u| u.as_str()) {
-                        if let Ok(parsed_url) = Url::parse(url) {
-                            let clean_url = format!(
-                                "//{}{}",
-                                parsed_url.host_str().unwrap_or(""),
-                                parsed_url.path()
-                            );
+                    if let Ok(parsed_url) = Url::parse(&parent.source_url) {
+                        let clean_url = format!(
+                            "//{}{}",
+                            parsed_url.host_str().unwrap_or(""),
+                            parsed_url.path()
+                        );
 
-                            let title = parent
-                                .get("title")
-                                .and_then(|t| t.as_str())
-                                .unwrap_or("No title");
+                        let filename = get_new_entry_filename(&parent.title);
 
-                            let filename = get_new_entry_filename(title);
-
-                            if let Some((existing_file, _)) = existing_refs
-                                .get(&clean_url)
-                                .and_then(|id| existing_nodes.get(id))
-                            {
-                                println!("Parent article is in file: {}", existing_file);
-                            } else {
-                                println!("Parent article would be created in: {}", filename);
-                            }
+                        if let Some((existing_file, _)) = existing_refs
+                            .get(&clean_url)
+                            .and_then(|id| existing_nodes.get(id))
+                        {
+                            println!("Parent article is in file: {}", existing_file);
+                        } else {
+                            println!("Parent article would be created in: {}", filename);
                         }
                     }
                 }
@@ -148,54 +163,44 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut articles_processed = 0;
             for (parent_id, parent_highlights) in highlights_by_parent.iter() {
                 // Find the parent article
-                if let Some(parent) = articles
-                    .iter()
-                    .find(|a| a["id"].as_str() == Some(parent_id))
-                {
-                    if let Some(url) = parent.get("source_url").and_then(|u| u.as_str()) {
-                        if let Ok(parsed_url) = Url::parse(url) {
-                            let clean_url = format!(
-                                "{}{}",
-                                parsed_url.host_str().unwrap_or(""),
-                                parsed_url.path()
-                            );
-                            let roam_db_url = format!("//{}", clean_url);
-                            let full_url = format!("{}://{}", parsed_url.scheme(), clean_url);
+                if let Some(parent) = articles.iter().find(|a| a.id == *parent_id) {
+                    if let Ok(parsed_url) = Url::parse(&parent.source_url) {
+                        let clean_url = format!(
+                            "{}{}",
+                            parsed_url.host_str().unwrap_or(""),
+                            parsed_url.path()
+                        );
+                        let roam_db_url = format!("//{}", clean_url);
+                        let full_url = format!("{}://{}", parsed_url.scheme(), clean_url);
 
-                            let title = parent
-                                .get("title")
-                                .and_then(|t| t.as_str())
-                                .unwrap_or("No title");
+                        let filename = get_new_entry_filename(&parent.title);
 
-                            let filename = get_new_entry_filename(title);
+                        let uuid = uuid::Uuid::new_v4().to_string();
+                        // Skip if file already exists in org-roam
+                        if existing_refs
+                            .get(&roam_db_url)
+                            .and_then(|id| existing_nodes.get(id))
+                            .is_none()
+                        {
+                            // Create file and write highlights
+                            let mut content = String::new();
+                            content.push_str(":PROPERTIES:\n");
+                            content.push_str(&format!(":ID: {}\n", uuid));
+                            content.push_str(&format!(":ROAM_REFS: {}\n", full_url));
+                            content.push_str(":END:\n");
+                            content.push_str(&format!("#+TITLE: {}\n", parent.title));
+                            content.push_str(&format!("#+roam_key: {}\n", full_url));
+                            content.push_str("\n* Highlights\n");
 
-                            let uuid = uuid::Uuid::new_v4().to_string();
-                            // Skip if file already exists in org-roam
-                            if existing_refs
-                                .get(&roam_db_url)
-                                .and_then(|id| existing_nodes.get(id))
-                                .is_none()
-                            {
-                                // Create file and write highlights
-                                let mut content = String::new();
-                                content.push_str(":PROPERTIES:\n");
-                                content.push_str(&format!(":ID: {}\n", uuid));
-                                content.push_str(&format!(":ROAM_REFS: {}\n", full_url));
-                                content.push_str(":END:\n");
-                                content.push_str(&format!("#+TITLE: {}\n", title));
-                                content.push_str(&format!("#+roam_key: {}\n", full_url));
-                                content.push_str("\n* Highlights\n");
-
-                                for highlight in parent_highlights {
-                                    if !highlight.content.is_empty() {
-                                        content.push_str(&format!("- {}\n", highlight.content));
-                                    }
+                            for highlight in parent_highlights {
+                                if !highlight.content.is_empty() {
+                                    content.push_str(&format!("- {}\n", highlight.content));
                                 }
-
-                                std::fs::write(&filename, &content)?;
-                                println!("Created file: {}", filename);
-                                println!("Content:\n{}", content);
                             }
+
+                            std::fs::write(&filename, &content)?;
+                            println!("Created file: {}", filename);
+                            println!("Content:\n{}", content);
                         }
                     }
                 }
@@ -211,7 +216,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 async fn playground(debug: bool) -> Result<(), Box<dyn std::error::Error>> {
-    let target = "highlights";
+    let target = "articles";
 
     if target == "notes" {
         let notes = get_note_list(debug).await?;
@@ -247,8 +252,8 @@ async fn playground(debug: bool) -> Result<(), Box<dyn std::error::Error>> {
         for item in results {
             if let Some(category) = item.get("category").and_then(|c| c.as_str()) {
                 if category == "article" {
-                    if let Some(url) = item.get("source_url").and_then(|u| u.as_str()) {
-                        if let Ok(parsed_url) = Url::parse(url) {
+                    if let Some(article) = Article::new(&item) {
+                        if let Ok(parsed_url) = Url::parse(&article.source_url) {
                             let clean_url = format!(
                                 "{}://{}{}",
                                 parsed_url.scheme(),
@@ -256,31 +261,11 @@ async fn playground(debug: bool) -> Result<(), Box<dyn std::error::Error>> {
                                 parsed_url.path()
                             );
 
-                            let id = item
-                                .get("id")
-                                .and_then(|i| i.as_str())
-                                .expect("Article must have an id");
-
-                            let author = item
-                                .get("author")
-                                .and_then(|a| a.as_str())
-                                .expect("Article must have an author");
-
-                            let saved_at = item
-                                .get("saved_at")
-                                .and_then(|s| s.as_str())
-                                .expect("Article must have saved_at");
-
-                            let title = item
-                                .get("title")
-                                .and_then(|t| t.as_str())
-                                .expect("Article must have a title");
-
-                            println!("ID: {}", id);
+                            println!("ID: {}", article.id);
                             println!("URL: {}", clean_url);
-                            println!("Author: {}", author);
-                            println!("Saved at: {}", saved_at);
-                            println!("Title: {}", title);
+                            println!("Author: {}", article.author);
+                            println!("Saved at: {}", article.saved_at);
+                            println!("Title: {}", article.title);
                             println!(); // Empty line between entries
                         }
                     }
