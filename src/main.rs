@@ -3,6 +3,31 @@ use reqwest::{Client, Url};
 use reqwest_middleware::ClientBuilder;
 use std::collections::HashMap;
 
+#[derive(Debug, Clone)]
+struct Highlight {
+    id: String,
+    parent_id: String,
+    content: String,
+}
+
+impl Highlight {
+    fn new(value: &serde_json::Value) -> Option<Self> {
+        Some(Self {
+            id: value.get("id")?.as_str()?.trim_matches('"').to_string(),
+            parent_id: value
+                .get("parent_id")?
+                .as_str()?
+                .trim_matches('"')
+                .to_string(),
+            content: value
+                .get("content")?
+                .as_str()?
+                .trim_matches('"')
+                .to_string(),
+        })
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let start_time = std::time::Instant::now();
@@ -48,31 +73,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("Total highlights found: {}", &highlights.len());
 
             let mut found_parents = 0;
-            for item in &highlights {
-                let parent_id = item.get("parent_id").unwrap().as_str().unwrap();
+            for highlight in &highlights {
+                let parent_id = highlight.parent_id.clone();
                 let parent_url = articles
                     .iter()
-                    .find(|article| article["id"].as_str() == Some(parent_id))
+                    .find(|article| article["id"].as_str() == Some(&parent_id))
                     .and_then(|article| article["source_url"].as_str())
                     .map(String::from);
 
-                println!(
-                    "ID: {}",
-                    item.get("id").unwrap().as_str().unwrap().trim_matches('"')
-                );
+                println!("ID: {}", highlight.id);
                 println!("Parent ID: {}", parent_id);
                 if parent_url.is_some() {
                     found_parents += 1;
                     println!("found the parent: {}", parent_url.unwrap());
                 }
-                println!(
-                    "Content: {}",
-                    item.get("content")
-                        .unwrap()
-                        .as_str()
-                        .unwrap()
-                        .trim_matches('"')
-                );
+                println!("Content: {}", highlight.content);
                 println!();
             }
             println!(
@@ -82,14 +97,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             );
 
             // Group highlights by parent_id
-            let mut highlights_by_parent: HashMap<String, Vec<&serde_json::Value>> = HashMap::new();
+            let mut highlights_by_parent: HashMap<String, Vec<&Highlight>> = HashMap::new();
             for highlight in &highlights {
-                let parent_id = highlight
-                    .get("parent_id")
-                    .unwrap()
-                    .as_str()
-                    .unwrap()
-                    .to_string();
+                let parent_id = highlight.parent_id.clone();
                 highlights_by_parent
                     .entry(parent_id)
                     .or_default()
@@ -105,15 +115,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 {
                     println!("\nHighlights for article {}:", parent_id);
                     for highlight in parent_highlights {
-                        println!(
-                            "- {}",
-                            highlight
-                                .get("id")
-                                .unwrap()
-                                .as_str()
-                                .unwrap()
-                                .trim_matches('"')
-                        );
+                        println!("- {}", highlight.content);
                     }
 
                     if let Some(url) = parent.get("source_url").and_then(|u| u.as_str()) {
@@ -185,12 +187,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 content.push_str("\n* Highlights\n");
 
                                 for highlight in parent_highlights {
-                                    if let Some(text) =
-                                        highlight.get("content").and_then(|t| t.as_str())
-                                    {
-                                        if !text.is_empty() {
-                                            content.push_str(&format!("- {}\n", text));
-                                        }
+                                    if !highlight.content.is_empty() {
+                                        content.push_str(&format!("- {}\n", highlight.content));
                                     }
                                 }
 
@@ -213,7 +211,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 async fn playground(debug: bool) -> Result<(), Box<dyn std::error::Error>> {
-    let target = "articles";
+    let target = "highlights";
 
     if target == "notes" {
         let notes = get_note_list(debug).await?;
@@ -292,28 +290,13 @@ async fn playground(debug: bool) -> Result<(), Box<dyn std::error::Error>> {
     } else if target == "highlights" {
         let highlights = get_highlight_list(debug).await?;
         for highlight in highlights {
-            let content = highlight
-                .get("content")
-                .and_then(|c| c.as_str())
-                .expect("Highlight must have content");
+            let content = highlight.content;
 
-            let created_at = highlight
-                .get("created_at")
-                .and_then(|c| c.as_str())
-                .expect("Highlight must have created_at");
+            let id = highlight.id;
 
-            let id = highlight
-                .get("id")
-                .and_then(|i| i.as_str())
-                .expect("Highlight must have id");
-
-            let parent_id = highlight
-                .get("parent_id")
-                .and_then(|p| p.as_str())
-                .expect("Highlight must have parent_id");
+            let parent_id = highlight.parent_id;
 
             println!("Content: {}", content);
-            println!("Created at: {}", created_at);
             println!("ID: {}", id);
             println!("Parent ID: {}", parent_id);
             println!(); // Empty line between entries
@@ -392,10 +375,13 @@ async fn get_note_list(debug: bool) -> Result<Vec<serde_json::Value>, Box<dyn st
     fetch_readwise_data(debug, Some("note")).await
 }
 
-async fn get_highlight_list(
-    debug: bool,
-) -> Result<Vec<serde_json::Value>, Box<dyn std::error::Error>> {
-    fetch_readwise_data(debug, Some("highlight")).await
+async fn get_highlight_list(debug: bool) -> Result<Vec<Highlight>, Box<dyn std::error::Error>> {
+    let json_results = fetch_readwise_data(debug, Some("highlight")).await?;
+    let highlights = json_results
+        .into_iter()
+        .filter_map(|value| Highlight::new(&value))
+        .collect();
+    Ok(highlights)
 }
 
 fn get_new_entry_filename(title: &str) -> String {
