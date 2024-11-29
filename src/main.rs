@@ -7,23 +7,49 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     match target {
         "playground" => playground(debug).await,
         "org" => {
-            // First we'll get all the articles. For each, we'll create its slug URL based on the title,
-            // in the format "YYYYMMDDhhmmss-slugified_title.org", in the "~/org/roam" directory, if it doesn't already exist.
-            // For now, we'll debug by simply printing for each article, the name of the file that we would create.
+            // Connect to SQLite database
+            let home_dir = std::env::var("HOME").expect("HOME environment variable not set");
+            let db_path = format!("{}/org-roam/org-roam.db", home_dir);
+            let conn = rusqlite::Connection::open(db_path)?;
+
+            // Get all existing refs from database
+            let mut stmt = conn.prepare("SELECT ref FROM refs")?;
+            let existing_refs: Vec<String> = stmt
+                .query_map([], |row| row.get(0))?
+                .filter_map(Result::ok)
+                .map(|url: String| url.trim_matches('"').to_string())
+                .collect();
+
+            // Get articles and check if they exist in database
             let results = get_reader_list(debug).await?;
             for item in results {
-                if let Some(title) = item.get("title").and_then(|t| t.as_str()) {
-                    // Get current time
-                    let now = chrono::Local::now();
+                if let Some(url) = item.get("source_url").and_then(|u| u.as_str()) {
+                    if let Ok(parsed_url) = Url::parse(url) {
+                        let clean_url = format!(
+                            "//{}{}",
+                            parsed_url.host_str().unwrap_or(""),
+                            parsed_url.path()
+                        );
 
-                    // Format filename as YYYYMMDDhhmmss-slugified_title.org
-                    let filename = format!(
-                        "{}-{}.org",
-                        now.format("%Y%m%d%H%M%S"),
-                        slug::slugify(title)
-                    );
+                        let title = item
+                            .get("title")
+                            .and_then(|t| t.as_str())
+                            .unwrap_or("No title");
 
-                    println!("Would create file: {}", filename);
+                        let now = chrono::Local::now();
+                        let filename = format!(
+                            "{}/org-roam/{}-{}.org",
+                            home_dir,
+                            now.format("%Y%m%d%H%M%S"),
+                            slug::slugify(title)
+                        );
+
+                        if existing_refs.contains(&clean_url) {
+                            println!("Ref already exists: {}", clean_url);
+                        } else {
+                            println!("would create: {} with ref {}", filename, clean_url);
+                        }
+                    }
                 }
             }
             Ok(())
