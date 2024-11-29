@@ -56,10 +56,40 @@ impl Article {
     }
 }
 
+struct Note {
+    id: String,
+    parent_id: String,
+    saved_at: String,
+    content: String,
+}
+
+impl Note {
+    fn new(value: &serde_json::Value) -> Option<Self> {
+        Some(Self {
+            id: value.get("id")?.as_str()?.trim_matches('"').to_string(),
+            parent_id: value
+                .get("parent_id")?
+                .as_str()?
+                .trim_matches('"')
+                .to_string(),
+            saved_at: value
+                .get("saved_at")?
+                .as_str()?
+                .trim_matches('"')
+                .to_string(),
+            content: value
+                .get("content")?
+                .as_str()?
+                .trim_matches('"')
+                .to_string(),
+        })
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let start_time = std::time::Instant::now();
-    let target = "org";
+    let target = "playground";
     match target {
         "playground" => playground().await,
         "org" => {
@@ -214,35 +244,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 async fn playground() -> Result<(), Box<dyn std::error::Error>> {
-    let target = "articles";
+    let target = "notes";
 
     if target == "notes" {
         let notes = get_note_list().await?;
         for note in notes {
-            let id = note
-                .get("id")
-                .and_then(|i| i.as_str())
-                .expect("Note must have an id");
-
-            let parent_id = note
-                .get("parent_id")
-                .and_then(|p| p.as_str())
-                .expect("Note must have a parent_id");
-
-            let saved_at = note
-                .get("saved_at")
-                .and_then(|s| s.as_str())
-                .expect("Note must have saved_at");
-
-            let content = note
-                .get("content")
-                .and_then(|c| c.as_str())
-                .expect("Note must have content");
-
-            println!("ID: {}", id);
-            println!("Parent ID: {}", parent_id);
-            println!("Saved at: {}", saved_at);
-            println!("Content: {}", content);
+            println!("ID: {}", note.id);
+            println!("Parent ID: {}", note.parent_id);
+            println!("Saved at: {}", note.saved_at);
+            println!("Content: {}", note.content);
             println!(); // Empty line between entries
         }
     } else if target == "articles" {
@@ -341,8 +351,13 @@ async fn get_article_list() -> Result<Vec<Article>, Box<dyn std::error::Error>> 
     Ok(articles)
 }
 
-async fn get_note_list() -> Result<Vec<serde_json::Value>, Box<dyn std::error::Error>> {
-    fetch_readwise_data(Some("note")).await
+async fn get_note_list() -> Result<Vec<Note>, Box<dyn std::error::Error>> {
+    let json_results = fetch_readwise_data(Some("note")).await?;
+    let notes = json_results
+        .into_iter()
+        .filter_map(|value| Note::new(&value))
+        .collect();
+    Ok(notes)
 }
 
 async fn get_highlight_list() -> Result<Vec<Highlight>, Box<dyn std::error::Error>> {
