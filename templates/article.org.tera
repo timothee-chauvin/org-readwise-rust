@@ -16,11 +16,13 @@
 - tags:
 
 {% if highlights %}
-* Highlights
-{% for highlight in highlights %}
-- {{ highlight.content }}
+* readwise:highlights
+{%- for highlight in highlights %}
+** readwise:{{ highlight.id }}
+{{ highlight.content }}
 {%- if highlight.note %}
-=> note: {{ highlight.note }}
+*** note
+{{ highlight.note }}
 {%- endif %}
-{% endfor %}
-{% endif %}
+{%- endfor %}
+{%- endif %}

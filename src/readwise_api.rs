@@ -154,15 +154,26 @@ pub async fn get_highlight_list() -> Result<Vec<Highlight>, Box<dyn std::error::
     Ok(highlights)
 }
 
-pub fn highlight_list_to_map(highlight_list: Vec<Highlight>) -> HashMap<String, Vec<Highlight>> {
-    // Return a map of parent_id to a list of the corresponding highlights
-    let mut map: HashMap<String, Vec<Highlight>> = HashMap::new();
-    for highlight in highlight_list {
-        map.entry(highlight.parent_id.clone())
-            .or_default()
-            .push(highlight);
+pub fn map_parents_to_highlights(
+    articles: Vec<Article>,
+    highlights: Vec<Highlight>,
+) -> HashMap<String, Vec<Highlight>> {
+    // Create a map from parent article IDs to their highlights
+    let mut parent_map: HashMap<String, Vec<Highlight>> = HashMap::new();
+
+    // Initialize empty vectors for each article ID
+    for article in articles {
+        parent_map.insert(article.id, Vec::new());
     }
-    map
+
+    // Group highlights by their parent_id
+    for highlight in highlights {
+        if let Some(highlights_vec) = parent_map.get_mut(&highlight.parent_id) {
+            highlights_vec.push(highlight);
+        }
+    }
+
+    parent_map
 }
 
 pub fn note_list_to_map(note_list: Vec<Note>) -> HashMap<String, Note> {

@@ -116,7 +116,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         notes.len()
     );
 
-    let highlights_by_parent = highlight_list_to_map(highlights);
+    let highlights_by_parent = map_parents_to_highlights(articles.clone(), highlights);
+    println!("{} parents", highlights_by_parent.len());
     let notes_by_parent = note_list_to_map(notes);
 
     let mut articles_processed = 0;
@@ -130,8 +131,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     parsed_url.host_str().unwrap_or(""),
                     parsed_url.path()
                 );
-                let roam_db_url = format!("//{}", clean_url);
                 let full_url = format!("{}://{}", parsed_url.scheme(), clean_url);
+                // org-roam stores URLs as UTF-8, not as percent-encoded
+                let roam_db_url = urlencoding::decode(&format!("//{}", clean_url))
+                    .expect("UTF-8")
+                    .to_string();
 
                 let filename = get_new_entry_filename(&parent.title);
 
@@ -140,45 +144,48 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if existing_refs
                     .get(&roam_db_url)
                     .and_then(|id| existing_nodes.get(id))
-                    .is_none()
+                    .is_some()
                 {
-                    let mut context = Context::new();
-                    context.insert("uuid", &uuid);
-                    context.insert("full_url", &full_url);
-                    context.insert("title", &parent.title);
-                    context.insert(
-                        "today",
-                        &chrono::Local::now().format("%Y-%m-%d %a").to_string(),
-                    );
-                    context.insert(
-                        "read_status",
-                        match parent.location.as_str() {
-                            "new" => "TODO",
-                            "later" => "TODO",
-                            "shortlist" => "TODO",
-                            "archive" => "DONE",
-                            _ => "TODO",
-                        },
-                    );
-
-                    if let Some(entry_highlights) = highlights_by_parent.get(&parent_id) {
-                        // Create a vector of highlights with their notes
-                        let highlights_with_notes: Vec<_> = entry_highlights
-                            .iter()
-                            .map(|highlight| {
-                                let note = notes_by_parent.get(&highlight.id);
-                                serde_json::json!({
-                                    "content": highlight.content,
-                                    "note": note.map(|n| n.content.clone()),
-                                })
-                            })
-                            .collect();
-                        context.insert("highlights", &highlights_with_notes);
-                    }
-                    let content = tera.render("article.org.tera", &context)?;
-                    std::fs::write(&filename, &content)?;
-                    println!("Created file: {}", filename);
+                    continue;
                 }
+
+                let mut context = Context::new();
+                context.insert("uuid", &uuid);
+                context.insert("full_url", &full_url);
+                context.insert("title", &parent.title);
+                context.insert(
+                    "today",
+                    &chrono::Local::now().format("%Y-%m-%d %a").to_string(),
+                );
+                context.insert(
+                    "read_status",
+                    match parent.location.as_str() {
+                        "new" => "TODO",
+                        "later" => "TODO",
+                        "shortlist" => "TODO",
+                        "archive" => "DONE",
+                        _ => "TODO",
+                    },
+                );
+
+                if let Some(entry_highlights) = highlights_by_parent.get(&parent_id) {
+                    // Create a vector of highlights with their notes
+                    let highlights_with_notes: Vec<_> = entry_highlights
+                        .iter()
+                        .map(|highlight| {
+                            let note = notes_by_parent.get(&highlight.id);
+                            serde_json::json!({
+                                "id": highlight.id,
+                                "content": highlight.content,
+                                "note": note.map(|n| n.content.clone()),
+                            })
+                        })
+                        .collect();
+                    context.insert("highlights", &highlights_with_notes);
+                }
+                let content = tera.render("article.org.tera", &context)?;
+                std::fs::write(&filename, &content)?;
+                println!("Created file: {}", filename);
             }
         }
         articles_processed += 1;
@@ -192,10 +199,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 fn get_new_entry_filename(title: &str) -> String {
     let now = chrono::Local::now();
     let home_dir = std::env::var("HOME").expect("HOME environment variable not set");
+    let slug = slug::slugify(title);
+    let truncated_slug = if slug.len() > 100 {
+        slug[..100].to_string()
+    } else {
+        slug
+    };
     format!(
         "{}/org/roam/{}-{}.org",
         home_dir,
         now.format("%Y%m%d%H%M%S"),
-        slug::slugify(title)
+        truncated_slug
     )
 }
