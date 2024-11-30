@@ -1,0 +1,26 @@
+:PROPERTIES:
+:ID: {{ uuid }}
+:ROAM_REFS: {{ full_url }}
+:END:
+#+TITLE: {{ title }}
+
+#+roam_key: {{ full_url }}
+
+- type: webpage
+- added: <{{ today }}>
+- read status: {{ read_status }}
+- link: {{ full_url }}
+- from: readwise
+- date:
+
+- tags:
+
+{% if highlights %}
+* Highlights
+{% for highlight in highlights %}
+- {{ highlight.content }}
+{%- if highlight.note %}
+=> note: {{ highlight.note }}
+{%- endif %}
+{% endfor %}
+{% endif %}

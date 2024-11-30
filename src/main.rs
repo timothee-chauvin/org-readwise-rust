@@ -2,6 +2,7 @@ mod readwise_api;
 use readwise_api::*;
 use reqwest::Url;
 use std::collections::HashMap;
+use tera::{Context, Tera};
 
 fn get_refs_from_db(
     conn: &rusqlite::Connection,
@@ -47,6 +48,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let start_time = std::time::Instant::now();
     // Connect to SQLite database
     let home_dir = std::env::var("HOME").expect("HOME environment variable not set");
+    let tera = Tera::new("templates/**/*").unwrap();
     let db_path = format!("{}/org-roam/org-roam.db", home_dir);
     let conn = rusqlite::Connection::open(db_path)?;
 
@@ -140,27 +142,40 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .and_then(|id| existing_nodes.get(id))
                     .is_none()
                 {
-                    // Create file and write highlights and notes
-                    let mut content = String::new();
-                    content.push_str(":PROPERTIES:\n");
-                    content.push_str(&format!(":ID: {}\n", uuid));
-                    content.push_str(&format!(":ROAM_REFS: {}\n", full_url));
-                    content.push_str(":END:\n");
-                    content.push_str(&format!("#+TITLE: {}\n", parent.title));
-                    content.push_str(&format!("#+roam_key: {}\n", full_url));
+                    let mut context = Context::new();
+                    context.insert("uuid", &uuid);
+                    context.insert("full_url", &full_url);
+                    context.insert("title", &parent.title);
+                    context.insert(
+                        "today",
+                        &chrono::Local::now().format("%Y-%m-%d %a").to_string(),
+                    );
+                    context.insert(
+                        "read_status",
+                        match parent.location.as_str() {
+                            "new" => "TODO",
+                            "later" => "TODO",
+                            "shortlist" => "TODO",
+                            "archive" => "DONE",
+                            _ => "TODO",
+                        },
+                    );
 
-                    // Add highlights if they exist
                     if let Some(entry_highlights) = highlights_by_parent.get(&parent_id) {
-                        content.push_str("\n* Highlights\n");
-                        for highlight in entry_highlights {
-                            content.push_str(&format!("- {}\n", highlight.content));
-                            if let Some(note) = notes_by_parent.get(&highlight.id) {
-                                println!("Note: {:?}", note);
-                                content.push_str(&format!("=> note: {}\n", note.content));
-                            }
-                        }
+                        // Create a vector of highlights with their notes
+                        let highlights_with_notes: Vec<_> = entry_highlights
+                            .iter()
+                            .map(|highlight| {
+                                let note = notes_by_parent.get(&highlight.id);
+                                serde_json::json!({
+                                    "content": highlight.content,
+                                    "note": note.map(|n| n.content.clone()),
+                                })
+                            })
+                            .collect();
+                        context.insert("highlights", &highlights_with_notes);
                     }
-
+                    let content = tera.render("article.org.tera", &context)?;
                     std::fs::write(&filename, &content)?;
                     println!("Created file: {}", filename);
                 }
