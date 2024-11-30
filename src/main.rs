@@ -59,7 +59,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Total articles found: {}", &articles.len());
     println!("Total highlights found: {}", &highlights.len());
     println!("Total notes found: {}", &notes.len());
-    println!("First article: {:?}", articles[0]);
+    for location in ["new", "later", "shortlist", "archive", "feed"] {
+        let filtered_articles: Vec<&Article> =
+            articles.iter().filter(|a| a.location == location).collect();
+        println!("Articles in {}: {}", location, filtered_articles.len());
+        if !filtered_articles.is_empty() {
+            println!("First article: {:?}", filtered_articles[0]);
+        }
+    }
     println!("First highlight: {:?}", highlights[0]);
     println!("First note: {:?}", notes[0]);
     let first_ref = existing_refs.keys().next().unwrap();
