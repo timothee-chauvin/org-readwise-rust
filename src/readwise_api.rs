@@ -13,17 +13,9 @@ pub struct Highlight {
 impl Highlight {
     fn new(value: &serde_json::Value) -> Option<Self> {
         Some(Self {
-            id: value.get("id")?.as_str()?.trim_matches('"').to_string(),
-            parent_id: value
-                .get("parent_id")?
-                .as_str()?
-                .trim_matches('"')
-                .to_string(),
-            content: value
-                .get("content")?
-                .as_str()?
-                .trim_matches('"')
-                .to_string(),
+            id: value.get("id")?.as_str()?.to_string(),
+            parent_id: value.get("parent_id")?.as_str()?.to_string(),
+            content: value.get("content")?.as_str()?.to_string(),
         })
     }
 }
@@ -33,6 +25,8 @@ pub struct Article {
     pub id: String,
     pub source_url: String,
     pub title: String,
+    pub category: String,
+    pub location: String,
     pub author: String,
     pub saved_at: String,
 }
@@ -40,19 +34,13 @@ pub struct Article {
 impl Article {
     fn new(value: &serde_json::Value) -> Option<Self> {
         Some(Self {
-            id: value.get("id")?.as_str()?.trim_matches('"').to_string(),
-            source_url: value
-                .get("source_url")?
-                .as_str()?
-                .trim_matches('"')
-                .to_string(),
-            title: value.get("title")?.as_str()?.trim_matches('"').to_string(),
-            author: value.get("author")?.as_str()?.trim_matches('"').to_string(),
-            saved_at: value
-                .get("saved_at")?
-                .as_str()?
-                .trim_matches('"')
-                .to_string(),
+            id: value.get("id")?.as_str()?.to_string(),
+            source_url: value.get("source_url")?.as_str()?.to_string(),
+            title: value.get("title")?.as_str()?.to_string(),
+            category: value.get("category")?.as_str()?.to_string(),
+            location: value.get("location")?.as_str()?.to_string(),
+            author: value.get("author")?.as_str()?.to_string(),
+            saved_at: value.get("saved_at")?.as_str()?.to_string(),
         })
     }
 }
@@ -68,22 +56,10 @@ pub struct Note {
 impl Note {
     fn new(value: &serde_json::Value) -> Option<Self> {
         Some(Self {
-            id: value.get("id")?.as_str()?.trim_matches('"').to_string(),
-            parent_id: value
-                .get("parent_id")?
-                .as_str()?
-                .trim_matches('"')
-                .to_string(),
-            saved_at: value
-                .get("saved_at")?
-                .as_str()?
-                .trim_matches('"')
-                .to_string(),
-            content: value
-                .get("content")?
-                .as_str()?
-                .trim_matches('"')
-                .to_string(),
+            id: value.get("id")?.as_str()?.to_string(),
+            parent_id: value.get("parent_id")?.as_str()?.to_string(),
+            saved_at: value.get("saved_at")?.as_str()?.to_string(),
+            content: value.get("content")?.as_str()?.to_string(),
         })
     }
 }
