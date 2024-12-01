@@ -120,6 +120,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("{} parents", highlights_by_parent.len());
     let notes_by_parent = note_list_to_map(notes);
 
+    let duplicate_titles = get_duplicate_titles(&articles);
+    println!("Duplicate titles: {:?}", duplicate_titles);
+
     let mut articles_processed = 0;
 
     for parent_id in highlights_by_parent.keys().cloned() {
@@ -137,7 +140,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .expect("UTF-8")
                     .to_string();
 
-                let filename = get_new_entry_filename(&parent.title);
+                let filename = if duplicate_titles.contains(&parent.title) {
+                    get_new_entry_filename(&parent.title, Some(&full_url))
+                } else {
+                    get_new_entry_filename(&parent.title, None)
+                };
 
                 let uuid = uuid::Uuid::new_v4().to_string();
                 // Skip if file already exists in org-roam
@@ -196,7 +203,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn get_new_entry_filename(title: &str) -> String {
+fn get_new_entry_filename(title: &str, url: Option<&str>) -> String {
+    // Generate a new filename for a new org-roam entry, based on the title.
+    // If the URL is provided, also include the first 8 characters of the MD5 hash of the URL in the filename.
     let now = chrono::Local::now();
     let home_dir = std::env::var("HOME").expect("HOME environment variable not set");
     let slug = slug::slugify(title);
@@ -205,10 +214,33 @@ fn get_new_entry_filename(title: &str) -> String {
     } else {
         slug
     };
+
+    let maybe_url_part = if let Some(u) = url {
+        let hash = md5::compute(u);
+        let hash_str = format!("{:08x}", hash);
+        let truncated_hash = &hash_str[..8];
+        format!("-{}", truncated_hash)
+    } else {
+        String::new()
+    };
     format!(
-        "{}/org/roam/{}-{}.org",
+        "{}/org/roam/{}-{}{}.org",
         home_dir,
         now.format("%Y%m%d%H%M%S"),
-        truncated_slug
+        truncated_slug,
+        maybe_url_part
     )
+}
+
+fn get_duplicate_titles(articles: &[Article]) -> Vec<String> {
+    // Return a list of titles that appear more than once in the article list
+    let mut title_counts: HashMap<String, u32> = HashMap::new();
+    for article in articles {
+        *title_counts.entry(article.title.clone()).or_default() += 1;
+    }
+    title_counts
+        .iter()
+        .filter(|(_, count)| **count > 1)
+        .map(|(title, _)| title.clone())
+        .collect()
 }
