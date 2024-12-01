@@ -92,6 +92,8 @@ async fn fetch_readwise_data(
             params.push(format!("pageCursor={}", cursor));
         }
 
+        params.push("withHtmlContent=true".to_string());
+
         if !params.is_empty() {
             url.push('?');
             url.push_str(&params.join("&"));
@@ -129,7 +131,43 @@ async fn fetch_readwise_data(
 }
 
 pub async fn get_article_list() -> Result<Vec<Article>, Box<dyn std::error::Error>> {
-    let json_results = fetch_readwise_data(Some("article")).await?;
+    let json_results = fetch_readwise_data(Some("rss")).await?;
+    println!("JSON results: {:#?}", json_results);
+    // Extract and print links from html_content of each result
+    for result in &json_results {
+        println!("Title: {}", result.get("title").unwrap().as_str().unwrap());
+        if let Some(html) = result.get("html_content").and_then(|h| h.as_str()) {
+            let document = scraper::Html::parse_document(html);
+            let selector = scraper::Selector::parse("a").unwrap();
+            for element in document.select(&selector) {
+                if let Some(href) = element.value().attr("href") {
+                    if href.starts_with("https://substack.com/app-link/post?") {
+                        if let Ok(url) = reqwest::Url::parse(href) {
+                            let mut filtered_url =
+                                reqwest::Url::parse("https://substack.com/app-link/post").unwrap();
+                            let publication_id = url
+                                .query_pairs()
+                                .find(|(k, _)| k == "publication_id")
+                                .map(|(_, v)| v);
+                            let post_id = url
+                                .query_pairs()
+                                .find(|(k, _)| k == "post_id")
+                                .map(|(_, v)| v);
+
+                            if let (Some(pub_id), Some(p_id)) = (publication_id, post_id) {
+                                filtered_url.set_query(Some(&format!(
+                                    "publication_id={}&post_id={}",
+                                    pub_id, p_id
+                                )));
+                                println!("Found Substack link: {}", filtered_url);
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+    }
     let articles = json_results
         .into_iter()
         .filter_map(|value| Article::new(&value))
