@@ -82,16 +82,19 @@ async fn fetch_readwise_data(
 
     loop {
         let mut url = String::from("https://readwise.io/api/v3/list/");
+        let mut params = Vec::new();
+
         if let Some(cat) = category {
-            url.push_str(&format!("?category={}", cat));
+            params.push(format!("category={}", cat));
         }
 
         if let Some(cursor) = next_cursor {
-            url.push_str(&format!(
-                "{}pageCursor={}",
-                if category.is_some() { "&" } else { "?" },
-                cursor
-            ));
+            params.push(format!("pageCursor={}", cursor));
+        }
+
+        if !params.is_empty() {
+            url.push('?');
+            url.push_str(&params.join("&"));
         }
 
         let response = client
