@@ -1,18 +1,25 @@
 mod readwise_api;
+mod settings;
 mod util;
 
 use readwise_api::*;
+use settings::Settings;
 use std::collections::HashMap;
+use std::path::Path;
 use std::process::Command;
 use tera::{Context, Tera};
 
 fn get_existing_refs(
-    org_roam_dir: &str,
+    org_roam_dir: &Path,
 ) -> Result<HashMap<String, String>, Box<dyn std::error::Error>> {
     // Run ripgrep to find all ROAM_REFS lines in org_roam_dir.
     // Return a mapping from roam_ref to full filename.
     let output = Command::new("rg")
-        .args(["--with-filename", "^:ROAM_REFS:", org_roam_dir])
+        .args([
+            "--with-filename",
+            "^:ROAM_REFS:",
+            &org_roam_dir.to_string_lossy(),
+        ])
         .output()?;
 
     let output_str = String::from_utf8(output.stdout)?;
@@ -32,11 +39,11 @@ fn get_existing_refs(
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let start_time = std::time::Instant::now();
-    let home_dir = std::env::var("HOME").expect("HOME environment variable not set");
-    let tera = Tera::new("templates/**/*").unwrap();
-    let org_roam_dir = format!("{}/org/roam", home_dir);
+    let settings = Settings::new()?;
+    let tera = Tera::new(&settings.templates_dir.to_string_lossy())?;
+    let org_roam_dir = &settings.org_roam_dir;
 
-    let existing_refs = get_existing_refs(&org_roam_dir)?;
+    let existing_refs = get_existing_refs(org_roam_dir)?;
 
     let documents = get_document_list().await?;
     let highlights = get_highlight_list().await?;
@@ -107,9 +114,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let full_url = parent.source_url.clone();
         let filename = if duplicate_titles.contains(&parent.title) {
-            get_new_entry_filename(&parent.title, Some(&full_url))
+            get_new_entry_filename(org_roam_dir, &parent.title, Some(&full_url))
         } else {
-            get_new_entry_filename(&parent.title, None)
+            get_new_entry_filename(org_roam_dir, &parent.title, None)
         };
 
         let uuid = uuid::Uuid::new_v4().to_string();
@@ -168,11 +175,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn get_new_entry_filename(title: &str, url: Option<&str>) -> String {
+fn get_new_entry_filename(org_roam_dir: &Path, title: &str, url: Option<&str>) -> String {
     // Generate a new filename for a new org-roam entry, based on the title.
     // If the URL is provided, also include the first 8 characters of the MD5 hash of the URL in the filename.
     let now = chrono::Local::now();
-    let home_dir = std::env::var("HOME").expect("HOME environment variable not set");
     let slug = slug::slugify(title);
     let truncated_slug = if slug.len() > 100 {
         slug[..100].to_string()
@@ -188,13 +194,15 @@ fn get_new_entry_filename(title: &str, url: Option<&str>) -> String {
     } else {
         String::new()
     };
-    format!(
-        "{}/org/roam/{}-{}{}.org",
-        home_dir,
-        now.format("%Y%m%d%H%M%S"),
-        truncated_slug,
-        maybe_url_part
-    )
+    org_roam_dir
+        .join(format!(
+            "{}-{}{}.org",
+            now.format("%Y%m%d%H%M%S"),
+            truncated_slug,
+            maybe_url_part
+        ))
+        .to_string_lossy()
+        .into_owned()
 }
 
 fn get_duplicate_titles(documents: &[Document]) -> Vec<String> {

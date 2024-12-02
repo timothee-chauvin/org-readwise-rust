@@ -1,0 +1,2 @@
+org_roam_dir = "~/org/roam"
+templates_dir = "templates/**/*"
