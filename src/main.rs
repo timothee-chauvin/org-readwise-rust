@@ -65,13 +65,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Total highlights found: {}", &highlights.len());
     println!("Total notes found: {}", &notes.len());
     for location in ["new", "later", "shortlist", "archive", "feed"] {
-        let filtered_articles: Vec<&Document> = documents
+        let filtered_documents: Vec<&Document> = documents
             .iter()
             .filter(|a| a.location == location)
             .collect();
-        println!("Documents in {}: {}", location, filtered_articles.len());
-        if !filtered_articles.is_empty() {
-            println!("First document: {:?}", filtered_articles[0]);
+        println!("Documents in {}: {}", location, filtered_documents.len());
+        if !filtered_documents.is_empty() {
+            println!("First document: {:?}", filtered_documents[0]);
         }
     }
     println!("First highlight: {:?}", highlights[0]);
@@ -153,7 +153,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut context = Context::new();
             context.insert("uuid", &uuid);
             context.insert("roam_ref", &parent.roam_full_ref);
-            context.insert("full_url", &full_url);
+            if parent.has_url {
+                context.insert("full_url", &full_url);
+            }
             context.insert("title", &parent.title);
             context.insert(
                 "today",
@@ -185,7 +187,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .collect();
                 context.insert("highlights", &highlights_with_notes);
             }
-            let content = tera.render("article.org.tera", &context)?;
+            let content = tera.render("document.org.tera", &context)?;
             std::fs::write(&filename, &content)?;
             println!("Created file: {}", filename);
         }
@@ -227,7 +229,7 @@ fn get_new_entry_filename(title: &str, url: Option<&str>) -> String {
 }
 
 fn get_duplicate_titles(documents: &[Document]) -> Vec<String> {
-    // Return a list of titles that appear more than once in the article list
+    // Return a list of titles that appear more than once in the document list
     let mut title_counts: HashMap<String, u32> = HashMap::new();
     for document in documents {
         *title_counts.entry(document.title.clone()).or_default() += 1;

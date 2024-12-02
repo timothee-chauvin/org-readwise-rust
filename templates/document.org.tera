@@ -7,7 +7,9 @@
 - type: webpage
 - added: <{{ today }}>
 - read status: {{ read_status }}
+{%- if full_url %}
 - link: {{ full_url }}
+{%- endif %}
 - from: readwise
 - date:
 
