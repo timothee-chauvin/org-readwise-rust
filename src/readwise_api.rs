@@ -24,6 +24,9 @@ impl Highlight {
 #[derive(Debug, Clone)]
 pub struct Document {
     pub id: String,
+    // A document has a URL if the "source_url" field in the API results starts with http
+    // (typically, otherwise the source_url starts with private://)
+    pub has_url: bool,
     // roam_db_ref and roam_full_ref are similar but with a few key differences:
     // - for documents with an URL, the full ref is e.g. https://example.com, while the db ref is only //example.com
     // - for documents without an URL, we use their ID to create a ref that must start with an @ symbol for the full ref,
@@ -40,24 +43,27 @@ pub struct Document {
 
 impl Document {
     fn new(value: &serde_json::Value) -> Option<Self> {
+        let has_url = value
+            .get("source_url")
+            .and_then(|url| url.as_str())
+            .map(|url| url.starts_with("http"))
+            .unwrap_or(false);
         let clean_url = clean_url(value.get("source_url")?.as_str()?);
         let id = value.get("id")?.as_str()?.to_string();
-        let category = value.get("category")?.as_str()?.to_string();
         Some(Self {
             id: id.clone(),
-            roam_db_ref: match category.as_str() {
-                "article" => org_roam_ref(&clean_url),
-                "epub" => format!("readwise_{}", id),
-                _ => panic!("Unknown category type: {}", category),
+            has_url,
+            roam_db_ref: match has_url {
+                true => org_roam_ref(&clean_url),
+                false => format!("readwise_{}", id),
             },
-            roam_full_ref: match category.as_str() {
-                "article" => clean_url.clone(),
-                "epub" => format!("@readwise_{}", id),
-                _ => panic!("Unknown category type: {}", category),
+            roam_full_ref: match has_url {
+                true => clean_url.clone(),
+                false => format!("@readwise_{}", id),
             },
             source_url: clean_url,
             title: value.get("title")?.as_str()?.to_string(),
-            category,
+            category: value.get("category")?.as_str()?.to_string(),
             location: value.get("location")?.as_str()?.to_string(),
             author: value.get("author")?.as_str()?.to_string(),
             saved_at: value.get("saved_at")?.as_str()?.to_string(),
@@ -152,7 +158,7 @@ pub async fn get_document_list() -> Result<Vec<Document>, Box<dyn std::error::Er
     // Return all documents of type "epub" or "article"
     let mut all_documents = Vec::new();
 
-    for category in ["epub", "article"] {
+    for category in ["epub", "article", "pdf"] {
         let results = fetch_readwise_data(Some(category)).await?;
         let documents: Vec<Document> = results
             .into_iter()
