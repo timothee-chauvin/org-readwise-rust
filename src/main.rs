@@ -1,4 +1,7 @@
+mod org_roam;
 mod readwise_api;
+mod util;
+
 use readwise_api::*;
 use reqwest::Url;
 use std::collections::HashMap;
@@ -55,18 +58,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let existing_refs = get_refs_from_db(&conn)?;
     let existing_nodes = get_nodes_from_db(&conn)?;
 
-    let articles = get_article_list().await?;
+    let documents = get_document_list().await?;
     let highlights = get_highlight_list().await?;
     let notes = get_note_list().await?;
-    println!("Total articles found: {}", &articles.len());
+    println!("Total documents found: {}", &documents.len());
     println!("Total highlights found: {}", &highlights.len());
     println!("Total notes found: {}", &notes.len());
     for location in ["new", "later", "shortlist", "archive", "feed"] {
-        let filtered_articles: Vec<&Article> =
-            articles.iter().filter(|a| a.location == location).collect();
-        println!("Articles in {}: {}", location, filtered_articles.len());
+        let filtered_articles: Vec<&Document> = documents
+            .iter()
+            .filter(|a| a.location == location)
+            .collect();
+        println!("Documents in {}: {}", location, filtered_articles.len());
         if !filtered_articles.is_empty() {
-            println!("First article: {:?}", filtered_articles[0]);
+            println!("First document: {:?}", filtered_articles[0]);
         }
     }
     println!("First highlight: {:?}", highlights[0]);
@@ -87,14 +92,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut found_highlight_parents = 0;
     for highlight in &highlights {
         let parent_id = highlight.parent_id.clone();
-        let parent_article = articles.iter().find(|article| article.id == parent_id);
+        let parent_document = documents.iter().find(|document| document.id == parent_id);
 
-        if parent_article.is_some() {
+        if parent_document.is_some() {
             found_highlight_parents += 1;
         }
     }
     println!(
-        "Found parent articles for {}/{} highlights",
+        "Found parent documents for {}/{} highlights",
         found_highlight_parents,
         highlights.len()
     );
@@ -116,88 +121,77 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         notes.len()
     );
 
-    let highlights_by_parent = map_parents_to_highlights(articles.clone(), highlights);
+    let highlights_by_parent = map_parents_to_highlights(documents.clone(), highlights);
     println!("{} parents", highlights_by_parent.len());
     let notes_by_parent = note_list_to_map(notes);
 
-    let duplicate_titles = get_duplicate_titles(&articles);
+    let duplicate_titles = get_duplicate_titles(&documents);
     println!("Duplicate titles: {:?}", duplicate_titles);
 
-    let mut articles_processed = 0;
+    let mut documents_processed = 0;
 
     for parent_id in highlights_by_parent.keys().cloned() {
-        // Find the parent article
-        if let Some(parent) = articles.iter().find(|a| a.id == parent_id) {
-            if let Ok(parsed_url) = Url::parse(&parent.source_url) {
-                let clean_url = format!(
-                    "{}{}",
-                    parsed_url.host_str().unwrap_or(""),
-                    parsed_url.path()
-                );
-                let full_url = format!("{}://{}", parsed_url.scheme(), clean_url);
-                // org-roam stores URLs as UTF-8, not as percent-encoded
-                let roam_db_url = urlencoding::decode(&format!("//{}", clean_url))
-                    .expect("UTF-8")
-                    .to_string();
+        // Find the parent document
+        if let Some(parent) = documents.iter().find(|d| d.id == parent_id) {
+            let full_url = parent.source_url.clone();
+            let filename = if duplicate_titles.contains(&parent.title) {
+                get_new_entry_filename(&parent.title, Some(&full_url))
+            } else {
+                get_new_entry_filename(&parent.title, None)
+            };
 
-                let filename = if duplicate_titles.contains(&parent.title) {
-                    get_new_entry_filename(&parent.title, Some(&full_url))
-                } else {
-                    get_new_entry_filename(&parent.title, None)
-                };
-
-                let uuid = uuid::Uuid::new_v4().to_string();
-                // Skip if file already exists in org-roam
-                if existing_refs
-                    .get(&roam_db_url)
-                    .and_then(|id| existing_nodes.get(id))
-                    .is_some()
-                {
-                    continue;
-                }
-
-                let mut context = Context::new();
-                context.insert("uuid", &uuid);
-                context.insert("full_url", &full_url);
-                context.insert("title", &parent.title);
-                context.insert(
-                    "today",
-                    &chrono::Local::now().format("%Y-%m-%d %a").to_string(),
-                );
-                context.insert(
-                    "read_status",
-                    match parent.location.as_str() {
-                        "new" => "TODO",
-                        "later" => "TODO",
-                        "shortlist" => "TODO",
-                        "archive" => "DONE",
-                        _ => "TODO",
-                    },
-                );
-
-                if let Some(entry_highlights) = highlights_by_parent.get(&parent_id) {
-                    // Create a vector of highlights with their notes
-                    let highlights_with_notes: Vec<_> = entry_highlights
-                        .iter()
-                        .map(|highlight| {
-                            let note = notes_by_parent.get(&highlight.id);
-                            serde_json::json!({
-                                "id": highlight.id,
-                                "content": highlight.content,
-                                "note": note.map(|n| n.content.clone()),
-                            })
-                        })
-                        .collect();
-                    context.insert("highlights", &highlights_with_notes);
-                }
-                let content = tera.render("article.org.tera", &context)?;
-                std::fs::write(&filename, &content)?;
-                println!("Created file: {}", filename);
+            let uuid = uuid::Uuid::new_v4().to_string();
+            // Skip if file already exists in org-roam
+            if existing_refs
+                .get(&parent.roam_db_ref)
+                .and_then(|id| existing_nodes.get(id))
+                .is_some()
+            {
+                continue;
             }
+
+            let mut context = Context::new();
+            context.insert("uuid", &uuid);
+            context.insert("roam_ref", &parent.roam_full_ref);
+            context.insert("full_url", &full_url);
+            context.insert("title", &parent.title);
+            context.insert(
+                "today",
+                &chrono::Local::now().format("%Y-%m-%d %a").to_string(),
+            );
+            context.insert(
+                "read_status",
+                match parent.location.as_str() {
+                    "new" => "TODO",
+                    "later" => "TODO",
+                    "shortlist" => "TODO",
+                    "archive" => "DONE",
+                    _ => "TODO",
+                },
+            );
+
+            if let Some(entry_highlights) = highlights_by_parent.get(&parent_id) {
+                // Create a vector of highlights with their notes
+                let highlights_with_notes: Vec<_> = entry_highlights
+                    .iter()
+                    .map(|highlight| {
+                        let note = notes_by_parent.get(&highlight.id);
+                        serde_json::json!({
+                            "id": highlight.id,
+                            "content": highlight.content,
+                            "note": note.map(|n| n.content.clone()),
+                        })
+                    })
+                    .collect();
+                context.insert("highlights", &highlights_with_notes);
+            }
+            let content = tera.render("article.org.tera", &context)?;
+            std::fs::write(&filename, &content)?;
+            println!("Created file: {}", filename);
         }
-        articles_processed += 1;
+        documents_processed += 1;
     }
-    println!("\nProcessed {} articles", articles_processed);
+    println!("\nProcessed {} documents", documents_processed);
     let duration = start_time.elapsed();
     println!("Time taken: {:?}", duration);
     Ok(())
@@ -232,11 +226,11 @@ fn get_new_entry_filename(title: &str, url: Option<&str>) -> String {
     )
 }
 
-fn get_duplicate_titles(articles: &[Article]) -> Vec<String> {
+fn get_duplicate_titles(documents: &[Document]) -> Vec<String> {
     // Return a list of titles that appear more than once in the article list
     let mut title_counts: HashMap<String, u32> = HashMap::new();
-    for article in articles {
-        *title_counts.entry(article.title.clone()).or_default() += 1;
+    for document in documents {
+        *title_counts.entry(document.title.clone()).or_default() += 1;
     }
     title_counts
         .iter()

@@ -1,3 +1,4 @@
+use crate::{org_roam::org_roam_ref, util::clean_url};
 use http_cache_reqwest::{CACacheManager, Cache, CacheMode, HttpCache, HttpCacheOptions};
 use reqwest::Client;
 use reqwest_middleware::ClientBuilder;
@@ -21,8 +22,14 @@ impl Highlight {
 }
 
 #[derive(Debug, Clone)]
-pub struct Article {
+pub struct Document {
     pub id: String,
+    // roam_db_ref and roam_full_ref are similar but with a few key differences:
+    // - for documents with an URL, the full ref is e.g. https://example.com, while the db ref is only //example.com
+    // - for documents without an URL, we use their ID to create a ref that must start with an @ symbol for the full ref,
+    //   while the db ref is the same but without the leading @ symbol.
+    pub roam_db_ref: String,
+    pub roam_full_ref: String,
     pub source_url: String,
     pub title: String,
     pub category: String,
@@ -31,13 +38,26 @@ pub struct Article {
     pub saved_at: String,
 }
 
-impl Article {
+impl Document {
     fn new(value: &serde_json::Value) -> Option<Self> {
+        let clean_url = clean_url(value.get("source_url")?.as_str()?);
+        let id = value.get("id")?.as_str()?.to_string();
+        let category = value.get("category")?.as_str()?.to_string();
         Some(Self {
-            id: value.get("id")?.as_str()?.to_string(),
-            source_url: value.get("source_url")?.as_str()?.to_string(),
+            id: id.clone(),
+            roam_db_ref: match category.as_str() {
+                "article" => org_roam_ref(&clean_url),
+                "epub" => format!("readwise_{}", id),
+                _ => panic!("Unknown category type: {}", category),
+            },
+            roam_full_ref: match category.as_str() {
+                "article" => clean_url.clone(),
+                "epub" => format!("@readwise_{}", id),
+                _ => panic!("Unknown category type: {}", category),
+            },
+            source_url: clean_url,
             title: value.get("title")?.as_str()?.to_string(),
-            category: value.get("category")?.as_str()?.to_string(),
+            category,
             location: value.get("location")?.as_str()?.to_string(),
             author: value.get("author")?.as_str()?.to_string(),
             saved_at: value.get("saved_at")?.as_str()?.to_string(),
@@ -128,14 +148,20 @@ async fn fetch_readwise_data(
     Ok(all_results)
 }
 
-pub async fn get_article_list() -> Result<Vec<Article>, Box<dyn std::error::Error>> {
-    let json_results = fetch_readwise_data(Some("article")).await?;
-    println!("JSON results: {:#?}", json_results);
-    let articles = json_results
-        .into_iter()
-        .filter_map(|value| Article::new(&value))
-        .collect();
-    Ok(articles)
+pub async fn get_document_list() -> Result<Vec<Document>, Box<dyn std::error::Error>> {
+    // Return all documents of type "epub" or "article"
+    let mut all_documents = Vec::new();
+
+    for category in ["epub", "article"] {
+        let results = fetch_readwise_data(Some(category)).await?;
+        let documents: Vec<Document> = results
+            .into_iter()
+            .filter_map(|value| Document::new(&value))
+            .collect();
+        all_documents.extend(documents);
+    }
+
+    Ok(all_documents)
 }
 
 pub async fn get_note_list() -> Result<Vec<Note>, Box<dyn std::error::Error>> {
@@ -159,7 +185,7 @@ pub async fn get_highlight_list() -> Result<Vec<Highlight>, Box<dyn std::error::
 }
 
 pub fn map_parents_to_highlights(
-    articles: Vec<Article>,
+    articles: Vec<Document>,
     highlights: Vec<Highlight>,
 ) -> HashMap<String, Vec<Highlight>> {
     // Create a map from parent article IDs to their highlights
