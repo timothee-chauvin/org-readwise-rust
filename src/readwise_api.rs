@@ -142,45 +142,25 @@ pub async fn get_article_list() -> Result<Vec<Article>, Box<dyn std::error::Erro
             for element in document.select(&selector) {
                 if let Some(href) = element.value().attr("href") {
                     if href.starts_with("https://substack.com/app-link/post?") {
-                        if let Ok(url) = reqwest::Url::parse(href) {
-                            let mut filtered_url =
-                                reqwest::Url::parse("https://substack.com/app-link/post").unwrap();
-                            let publication_id = url
-                                .query_pairs()
-                                .find(|(k, _)| k == "publication_id")
-                                .map(|(_, v)| v);
-                            let post_id = url
-                                .query_pairs()
-                                .find(|(k, _)| k == "post_id")
-                                .map(|(_, v)| v);
+                        println!("Found Substack link: {}", href);
 
-                            if let (Some(pub_id), Some(p_id)) = (publication_id, post_id) {
-                                filtered_url.set_query(Some(&format!(
-                                    "publication_id={}&post_id={}",
-                                    pub_id, p_id
-                                )));
-                                println!("Found Substack link: {}", filtered_url);
-
-                                // Follow redirect to get real URL
-                                let client = reqwest::Client::builder()
-                                    .redirect(reqwest::redirect::Policy::none())
-                                    .build()?;
-                                if let Ok(response) = client.get(filtered_url.as_str()).send().await
+                        // Follow redirect to get real URL
+                        let client = reqwest::Client::builder()
+                            .redirect(reqwest::redirect::Policy::none())
+                            .build()?;
+                        if let Ok(response) = client.get(href).send().await {
+                            if let Some(location) = response.headers().get("location") {
+                                if let Ok(redirect_url) =
+                                    reqwest::Url::parse(location.to_str().unwrap_or(""))
                                 {
-                                    if let Some(location) = response.headers().get("location") {
-                                        if let Ok(redirect_url) =
-                                            reqwest::Url::parse(location.to_str().unwrap_or(""))
-                                        {
-                                            // Create new URL with just scheme, host and path
-                                            let clean_url = format!(
-                                                "{}://{}{}",
-                                                redirect_url.scheme(),
-                                                redirect_url.host_str().unwrap_or(""),
-                                                redirect_url.path()
-                                            );
-                                            println!("Redirects to: {}", clean_url);
-                                        }
-                                    }
+                                    // Create new URL with just scheme, host and path
+                                    let clean_url = format!(
+                                        "{}://{}{}",
+                                        redirect_url.scheme(),
+                                        redirect_url.host_str().unwrap_or(""),
+                                        redirect_url.path()
+                                    );
+                                    println!("Redirects to: {}", clean_url);
                                 }
                             }
                         }
