@@ -32,60 +32,10 @@ pub struct Article {
 }
 
 impl Article {
-    fn process_substack_url(html: &str) -> Option<String> {
-        // Parse the HTML to find all URLs. If one of them is a substack app-link URL, follow the redirect and return the
-        // URL of the original substack article.
-        let document = scraper::Html::parse_document(html);
-        let selector = scraper::Selector::parse("a").unwrap();
-
-        for element in document.select(&selector) {
-            if let Some(href) = element.value().attr("href") {
-                println!("Found href {}", href);
-                if href.starts_with("https://substack.com/app-link/post?") {
-                    // Follow redirect to get real URL
-                    if let Ok(client) = reqwest::Client::builder()
-                        .redirect(reqwest::redirect::Policy::none())
-                        .build()
-                    {
-                        if let Ok(response) = futures::executor::block_on(client.get(href).send()) {
-                            if let Some(location) = response.headers().get("location") {
-                                if let Ok(redirect_url) =
-                                    reqwest::Url::parse(location.to_str().unwrap_or(""))
-                                {
-                                    // Create new URL with just scheme, host and path
-                                    println!("Redirected to {}", redirect_url);
-                                    return Some(format!(
-                                        "{}://{}{}",
-                                        redirect_url.scheme(),
-                                        redirect_url.host_str().unwrap_or(""),
-                                        redirect_url.path()
-                                    ));
-                                }
-                            }
-                        }
-                    }
-                    println!("Failed to redirect for {}", href);
-                    break;
-                }
-            }
-        }
-        None
-    }
-
     fn new(value: &serde_json::Value) -> Option<Self> {
-        let mut source_url = value.get("source_url")?.as_str()?.to_string();
-
-        // Try to find and process Substack URL from html_content
-        if let Some(html) = value.get("html_content").and_then(|h| h.as_str()) {
-            println!("Processing URL {}", source_url);
-            if let Some(processed_url) = Self::process_substack_url(html) {
-                source_url = processed_url;
-            }
-        }
-
         Some(Self {
             id: value.get("id")?.as_str()?.to_string(),
-            source_url,
+            source_url: value.get("source_url")?.as_str()?.to_string(),
             title: value.get("title")?.as_str()?.to_string(),
             category: value.get("category")?.as_str()?.to_string(),
             location: value.get("location")?.as_str()?.to_string(),
@@ -142,8 +92,6 @@ async fn fetch_readwise_data(
             params.push(format!("pageCursor={}", cursor));
         }
 
-        params.push("withHtmlContent=true".to_string());
-
         if !params.is_empty() {
             url.push('?');
             url.push_str(&params.join("&"));
@@ -181,7 +129,7 @@ async fn fetch_readwise_data(
 }
 
 pub async fn get_article_list() -> Result<Vec<Article>, Box<dyn std::error::Error>> {
-    let json_results = fetch_readwise_data(Some("rss")).await?;
+    let json_results = fetch_readwise_data(Some("article")).await?;
     println!("JSON results: {:#?}", json_results);
     let articles = json_results
         .into_iter()
