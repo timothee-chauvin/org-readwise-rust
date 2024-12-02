@@ -160,6 +160,28 @@ pub async fn get_article_list() -> Result<Vec<Article>, Box<dyn std::error::Erro
                                     pub_id, p_id
                                 )));
                                 println!("Found Substack link: {}", filtered_url);
+
+                                // Follow redirect to get real URL
+                                let client = reqwest::Client::builder()
+                                    .redirect(reqwest::redirect::Policy::none())
+                                    .build()?;
+                                if let Ok(response) = client.get(filtered_url.as_str()).send().await
+                                {
+                                    if let Some(location) = response.headers().get("location") {
+                                        if let Ok(redirect_url) =
+                                            reqwest::Url::parse(location.to_str().unwrap_or(""))
+                                        {
+                                            // Create new URL with just scheme, host and path
+                                            let clean_url = format!(
+                                                "{}://{}{}",
+                                                redirect_url.scheme(),
+                                                redirect_url.host_str().unwrap_or(""),
+                                                redirect_url.path()
+                                            );
+                                            println!("Redirects to: {}", clean_url);
+                                        }
+                                    }
+                                }
                             }
                         }
                         break;
