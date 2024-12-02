@@ -42,69 +42,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let settings = Settings::new()?;
     let tera = Tera::new(&settings.templates_dir.to_string_lossy())?;
     let org_roam_dir = &settings.org_roam_dir;
-
     let existing_refs = get_existing_refs(org_roam_dir)?;
-
     let documents = get_document_list().await?;
     let highlights = get_highlight_list().await?;
     let notes = get_note_list().await?;
-    println!("Total documents found: {}", &documents.len());
-    println!("Total highlights found: {}", &highlights.len());
-    println!("Total notes found: {}", &notes.len());
-    for location in ["new", "later", "shortlist", "archive", "feed"] {
-        let filtered_documents: Vec<&Document> = documents
-            .iter()
-            .filter(|a| a.location == location)
-            .collect();
-        println!("Documents in {}: {}", location, filtered_documents.len());
-        if !filtered_documents.is_empty() {
-            println!("First document: {:?}", filtered_documents[0]);
-        }
-    }
-    println!("First highlight: {:?}", highlights[0]);
-    println!("First note: {:?}", notes[0]);
-
-    let mut found_highlight_parents = 0;
-    for highlight in &highlights {
-        let parent_id = highlight.parent_id.clone();
-        let parent_document = documents.iter().find(|document| document.id == parent_id);
-
-        if parent_document.is_some() {
-            found_highlight_parents += 1;
-        }
-    }
-    println!(
-        "Found parent documents for {}/{} highlights",
-        found_highlight_parents,
-        highlights.len()
-    );
-
-    let mut found_note_parents = 0;
-    for note in &notes {
-        let parent_id = note.parent_id.clone();
-        let parent_highlight = highlights
-            .iter()
-            .find(|highlight| highlight.id == parent_id);
-
-        if parent_highlight.is_some() {
-            found_note_parents += 1;
-        }
-    }
-    println!(
-        "Found parent highlights for {}/{} notes",
-        found_note_parents,
-        notes.len()
-    );
 
     let highlights_by_parent = map_parents_to_highlights(documents.clone(), highlights);
-    println!("{} parents", highlights_by_parent.len());
     let notes_by_parent = note_list_to_map(notes);
 
     let duplicate_titles = get_duplicate_titles(&documents);
     println!("Duplicate titles: {:?}", duplicate_titles);
 
-    let mut documents_processed = 0;
-
+    let mut files_created = 0;
     for parent_id in highlights_by_parent.keys().cloned() {
         // Find the parent document
         let parent = documents
@@ -139,18 +88,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
         context.insert(
             "read_status",
-            match parent.location.as_str() {
-                "new" => "TODO",
-                "later" => "TODO",
-                "shortlist" => "TODO",
-                "archive" => "DONE",
-                _ => "TODO",
+            if parent.location.as_str() == "archive" {
+                "DONE"
+            } else {
+                "TODO"
             },
         );
-
         if let Some(entry_highlights) = highlights_by_parent.get(&parent_id) {
             // Create a vector of highlights with their notes
-            let highlights_with_notes: Vec<_> = entry_highlights
+            let highlights_with_notes: Vec<serde_json::Value> = entry_highlights
                 .iter()
                 .rev() // Reverse the order of highlights so they end up in the correct order in the org file
                 .map(|highlight| {
@@ -167,9 +113,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let content = tera.render("document.org.tera", &context)?;
         std::fs::write(&filename, &content)?;
         println!("Created file: {}", filename);
-        documents_processed += 1;
+        files_created += 1;
     }
-    println!("\nProcessed {} documents", documents_processed);
+    println!("\nCreated {} files", files_created);
     let duration = start_time.elapsed();
     println!("Time taken: {:?}", duration);
     Ok(())
