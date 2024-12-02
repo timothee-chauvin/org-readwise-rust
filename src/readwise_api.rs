@@ -32,10 +32,60 @@ pub struct Article {
 }
 
 impl Article {
+    fn process_substack_url(html: &str) -> Option<String> {
+        // Parse the HTML to find all URLs. If one of them is a substack app-link URL, follow the redirect and return the
+        // URL of the original substack article.
+        let document = scraper::Html::parse_document(html);
+        let selector = scraper::Selector::parse("a").unwrap();
+
+        for element in document.select(&selector) {
+            if let Some(href) = element.value().attr("href") {
+                println!("Found href {}", href);
+                if href.starts_with("https://substack.com/app-link/post?") {
+                    // Follow redirect to get real URL
+                    if let Ok(client) = reqwest::Client::builder()
+                        .redirect(reqwest::redirect::Policy::none())
+                        .build()
+                    {
+                        if let Ok(response) = futures::executor::block_on(client.get(href).send()) {
+                            if let Some(location) = response.headers().get("location") {
+                                if let Ok(redirect_url) =
+                                    reqwest::Url::parse(location.to_str().unwrap_or(""))
+                                {
+                                    // Create new URL with just scheme, host and path
+                                    println!("Redirected to {}", redirect_url);
+                                    return Some(format!(
+                                        "{}://{}{}",
+                                        redirect_url.scheme(),
+                                        redirect_url.host_str().unwrap_or(""),
+                                        redirect_url.path()
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                    println!("Failed to redirect for {}", href);
+                    break;
+                }
+            }
+        }
+        None
+    }
+
     fn new(value: &serde_json::Value) -> Option<Self> {
+        let mut source_url = value.get("source_url")?.as_str()?.to_string();
+
+        // Try to find and process Substack URL from html_content
+        if let Some(html) = value.get("html_content").and_then(|h| h.as_str()) {
+            println!("Processing URL {}", source_url);
+            if let Some(processed_url) = Self::process_substack_url(html) {
+                source_url = processed_url;
+            }
+        }
+
         Some(Self {
             id: value.get("id")?.as_str()?.to_string(),
-            source_url: value.get("source_url")?.as_str()?.to_string(),
+            source_url,
             title: value.get("title")?.as_str()?.to_string(),
             category: value.get("category")?.as_str()?.to_string(),
             location: value.get("location")?.as_str()?.to_string(),
@@ -133,43 +183,6 @@ async fn fetch_readwise_data(
 pub async fn get_article_list() -> Result<Vec<Article>, Box<dyn std::error::Error>> {
     let json_results = fetch_readwise_data(Some("rss")).await?;
     println!("JSON results: {:#?}", json_results);
-    // Extract and print links from html_content of each result
-    for result in &json_results {
-        println!("Title: {}", result.get("title").unwrap().as_str().unwrap());
-        if let Some(html) = result.get("html_content").and_then(|h| h.as_str()) {
-            let document = scraper::Html::parse_document(html);
-            let selector = scraper::Selector::parse("a").unwrap();
-            for element in document.select(&selector) {
-                if let Some(href) = element.value().attr("href") {
-                    if href.starts_with("https://substack.com/app-link/post?") {
-                        println!("Found Substack link: {}", href);
-
-                        // Follow redirect to get real URL
-                        let client = reqwest::Client::builder()
-                            .redirect(reqwest::redirect::Policy::none())
-                            .build()?;
-                        if let Ok(response) = client.get(href).send().await {
-                            if let Some(location) = response.headers().get("location") {
-                                if let Ok(redirect_url) =
-                                    reqwest::Url::parse(location.to_str().unwrap_or(""))
-                                {
-                                    // Create new URL with just scheme, host and path
-                                    let clean_url = format!(
-                                        "{}://{}{}",
-                                        redirect_url.scheme(),
-                                        redirect_url.host_str().unwrap_or(""),
-                                        redirect_url.path()
-                                    );
-                                    println!("Redirects to: {}", clean_url);
-                                }
-                            }
-                        }
-                        break;
-                    }
-                }
-            }
-        }
-    }
     let articles = json_results
         .into_iter()
         .filter_map(|value| Article::new(&value))
