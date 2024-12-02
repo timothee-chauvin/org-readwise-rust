@@ -1,4 +1,4 @@
-use crate::{org_roam::org_roam_ref, util::clean_url};
+use crate::util::clean_url;
 use http_cache_reqwest::{CACacheManager, Cache, CacheMode, HttpCache, HttpCacheOptions};
 use reqwest::Client;
 use reqwest_middleware::ClientBuilder;
@@ -27,12 +27,8 @@ pub struct Document {
     // A document has a URL if the "source_url" field in the API results starts with http
     // (typically, otherwise the source_url starts with private://)
     pub has_url: bool,
-    // roam_db_ref and roam_full_ref are similar but with a few key differences:
-    // - for documents with an URL, the full ref is e.g. https://example.com, while the db ref is only //example.com
-    // - for documents without an URL, we use their ID to create a ref that must start with an @ symbol for the full ref,
-    //   while the db ref is the same but without the leading @ symbol.
-    pub roam_db_ref: String,
-    pub roam_full_ref: String,
+    // roam_ref is either the full URL if there is one, or a ref in the format @readwise_<id>
+    pub roam_ref: String,
     pub source_url: String,
     pub readwise_url: String,
     pub title: String,
@@ -54,11 +50,7 @@ impl Document {
         Some(Self {
             id: id.clone(),
             has_url,
-            roam_db_ref: match has_url {
-                true => org_roam_ref(&clean_url),
-                false => format!("readwise_{}", id),
-            },
-            roam_full_ref: match has_url {
+            roam_ref: match has_url {
                 true => clean_url.clone(),
                 false => format!("@readwise_{}", id),
             },

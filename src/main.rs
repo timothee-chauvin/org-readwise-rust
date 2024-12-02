@@ -1,62 +1,42 @@
-mod org_roam;
 mod readwise_api;
 mod util;
 
 use readwise_api::*;
-use reqwest::Url;
 use std::collections::HashMap;
+use std::process::Command;
 use tera::{Context, Tera};
 
-fn get_refs_from_db(
-    conn: &rusqlite::Connection,
+fn get_existing_refs(
+    org_roam_dir: &str,
 ) -> Result<HashMap<String, String>, Box<dyn std::error::Error>> {
-    // Return a mapping from ref (the special URL format that org-roam uses) to node_id (the ID of the node where this ref is found)
-    let mut stmt = conn.prepare("SELECT ref, node_id FROM refs")?;
-    let existing_refs: HashMap<String, String> = stmt
-        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
-        .filter_map(Result::ok)
-        .map(|(url, node_id): (String, String)| {
-            (
-                url.trim_matches('"').to_string(),
-                node_id.trim_matches('"').to_string(),
-            )
-        })
-        .collect();
-    Ok(existing_refs)
-}
+    // Run ripgrep to find all ROAM_REFS lines in org_roam_dir.
+    // Return a mapping from roam_ref to full filename.
+    let output = Command::new("rg")
+        .args(["--with-filename", "^:ROAM_REFS:", org_roam_dir])
+        .output()?;
 
-fn get_nodes_from_db(
-    conn: &rusqlite::Connection,
-) -> Result<HashMap<String, (String, String)>, Box<dyn std::error::Error>> {
-    // Return a mapping from the ID of the node to the file where it is found and its title
-    let mut stmt = conn.prepare("SELECT id, file, title FROM nodes")?;
-    let nodes: HashMap<String, (String, String)> = stmt
-        .query_map([], |row| Ok((row.get(0)?, (row.get(1)?, row.get(2)?))))?
-        .filter_map(Result::ok)
-        .map(|(id, (file, title)): (String, (String, String))| {
-            (
-                id.trim_matches('"').to_string(),
-                (
-                    file.trim_matches('"').to_string(),
-                    title.trim_matches('"').to_string(),
-                ),
-            )
-        })
-        .collect();
-    Ok(nodes)
+    let output_str = String::from_utf8(output.stdout)?;
+
+    // Parse the output into a map of roam_ref -> filename
+    let mut refs_map = HashMap::new();
+    for line in output_str.lines() {
+        // Each line is in the format: filename::ROAM_REFS: ref
+        if let Some((filename, roam_ref)) = line.split_once("::ROAM_REFS:") {
+            let roam_ref = roam_ref.trim().to_string();
+            refs_map.insert(roam_ref, filename.to_string());
+        }
+    }
+    Ok(refs_map)
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let start_time = std::time::Instant::now();
-    // Connect to SQLite database
     let home_dir = std::env::var("HOME").expect("HOME environment variable not set");
     let tera = Tera::new("templates/**/*").unwrap();
-    let db_path = format!("{}/org-roam/org-roam.db", home_dir);
-    let conn = rusqlite::Connection::open(db_path)?;
+    let org_roam_dir = format!("{}/org/roam", home_dir);
 
-    let existing_refs = get_refs_from_db(&conn)?;
-    let existing_nodes = get_nodes_from_db(&conn)?;
+    let existing_refs = get_existing_refs(&org_roam_dir)?;
 
     let documents = get_document_list().await?;
     let highlights = get_highlight_list().await?;
@@ -76,18 +56,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     println!("First highlight: {:?}", highlights[0]);
     println!("First note: {:?}", notes[0]);
-    let first_ref = existing_refs.keys().next().unwrap();
-    println!(
-        "First ref: {:?} => {:?}",
-        first_ref,
-        existing_refs.get(first_ref).unwrap()
-    );
-    let first_node = existing_nodes.keys().next().unwrap();
-    println!(
-        "First node: {:?} => {:?}",
-        first_node,
-        existing_nodes.get(first_node).unwrap()
-    );
 
     let mut found_highlight_parents = 0;
     for highlight in &highlights {
@@ -146,17 +114,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let uuid = uuid::Uuid::new_v4().to_string();
         // Skip if file already exists in org-roam
-        if existing_refs
-            .get(&parent.roam_db_ref)
-            .and_then(|id| existing_nodes.get(id))
-            .is_some()
-        {
+        if existing_refs.contains_key(&parent.roam_ref) {
             continue;
         }
 
         let mut context = Context::new();
         context.insert("uuid", &uuid);
-        context.insert("roam_ref", &parent.roam_full_ref);
+        context.insert("roam_ref", &parent.roam_ref);
         if parent.has_url {
             context.insert("full_url", &full_url);
         }
