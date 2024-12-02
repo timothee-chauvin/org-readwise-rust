@@ -132,65 +132,68 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     for parent_id in highlights_by_parent.keys().cloned() {
         // Find the parent document
-        if let Some(parent) = documents.iter().find(|d| d.id == parent_id) {
-            let full_url = parent.source_url.clone();
-            let filename = if duplicate_titles.contains(&parent.title) {
-                get_new_entry_filename(&parent.title, Some(&full_url))
-            } else {
-                get_new_entry_filename(&parent.title, None)
-            };
+        let parent = documents
+            .iter()
+            .find(|d| d.id == parent_id)
+            .expect("Parent document must exist since we got its ID from highlights_by_parent");
 
-            let uuid = uuid::Uuid::new_v4().to_string();
-            // Skip if file already exists in org-roam
-            if existing_refs
-                .get(&parent.roam_db_ref)
-                .and_then(|id| existing_nodes.get(id))
-                .is_some()
-            {
-                continue;
-            }
+        let full_url = parent.source_url.clone();
+        let filename = if duplicate_titles.contains(&parent.title) {
+            get_new_entry_filename(&parent.title, Some(&full_url))
+        } else {
+            get_new_entry_filename(&parent.title, None)
+        };
 
-            let mut context = Context::new();
-            context.insert("uuid", &uuid);
-            context.insert("roam_ref", &parent.roam_full_ref);
-            if parent.has_url {
-                context.insert("full_url", &full_url);
-            }
-            context.insert("title", &parent.title);
-            context.insert(
-                "today",
-                &chrono::Local::now().format("%Y-%m-%d %a").to_string(),
-            );
-            context.insert(
-                "read_status",
-                match parent.location.as_str() {
-                    "new" => "TODO",
-                    "later" => "TODO",
-                    "shortlist" => "TODO",
-                    "archive" => "DONE",
-                    _ => "TODO",
-                },
-            );
-
-            if let Some(entry_highlights) = highlights_by_parent.get(&parent_id) {
-                // Create a vector of highlights with their notes
-                let highlights_with_notes: Vec<_> = entry_highlights
-                    .iter()
-                    .map(|highlight| {
-                        let note = notes_by_parent.get(&highlight.id);
-                        serde_json::json!({
-                            "id": highlight.id,
-                            "content": highlight.content,
-                            "note": note.map(|n| n.content.clone()),
-                        })
-                    })
-                    .collect();
-                context.insert("highlights", &highlights_with_notes);
-            }
-            let content = tera.render("document.org.tera", &context)?;
-            std::fs::write(&filename, &content)?;
-            println!("Created file: {}", filename);
+        let uuid = uuid::Uuid::new_v4().to_string();
+        // Skip if file already exists in org-roam
+        if existing_refs
+            .get(&parent.roam_db_ref)
+            .and_then(|id| existing_nodes.get(id))
+            .is_some()
+        {
+            continue;
         }
+
+        let mut context = Context::new();
+        context.insert("uuid", &uuid);
+        context.insert("roam_ref", &parent.roam_full_ref);
+        if parent.has_url {
+            context.insert("full_url", &full_url);
+        }
+        context.insert("title", &parent.title);
+        context.insert(
+            "today",
+            &chrono::Local::now().format("%Y-%m-%d %a").to_string(),
+        );
+        context.insert(
+            "read_status",
+            match parent.location.as_str() {
+                "new" => "TODO",
+                "later" => "TODO",
+                "shortlist" => "TODO",
+                "archive" => "DONE",
+                _ => "TODO",
+            },
+        );
+
+        if let Some(entry_highlights) = highlights_by_parent.get(&parent_id) {
+            // Create a vector of highlights with their notes
+            let highlights_with_notes: Vec<_> = entry_highlights
+                .iter()
+                .map(|highlight| {
+                    let note = notes_by_parent.get(&highlight.id);
+                    serde_json::json!({
+                        "id": highlight.id,
+                        "content": highlight.content,
+                        "note": note.map(|n| n.content.clone()),
+                    })
+                })
+                .collect();
+            context.insert("highlights", &highlights_with_notes);
+        }
+        let content = tera.render("document.org.tera", &context)?;
+        std::fs::write(&filename, &content)?;
+        println!("Created file: {}", filename);
         documents_processed += 1;
     }
     println!("\nProcessed {} documents", documents_processed);
