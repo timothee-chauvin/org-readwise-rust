@@ -10,6 +10,7 @@
 {%- if full_url %}
 - link: {{ full_url }}
 {%- endif %}
+- readwise link: {{ readwise_url }}
 - from: readwise
 - date:
 

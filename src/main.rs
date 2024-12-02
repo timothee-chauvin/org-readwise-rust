@@ -160,6 +160,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         if parent.has_url {
             context.insert("full_url", &full_url);
         }
+        context.insert("readwise_url", &parent.readwise_url);
         context.insert("title", &parent.title);
         context.insert(
             "today",
@@ -180,6 +181,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Create a vector of highlights with their notes
             let highlights_with_notes: Vec<_> = entry_highlights
                 .iter()
+                .rev() // Reverse the order of highlights so they end up in the correct order in the org file
                 .map(|highlight| {
                     let note = notes_by_parent.get(&highlight.id);
                     serde_json::json!({
