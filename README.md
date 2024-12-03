@@ -39,6 +39,47 @@ This program is designed to be run regularly, e.g. daily. To only update what ne
 
 An ideal Reader API would allow us to get all the top-level documents using `updatedAfter`, then get all the highlights and notes within these documents (even those that haven't been updated).
 
+## How to run it regularly
+You may use any method, but here's a suggestion with `systemctl`:
+
+* `~/.config/systemd/user/org-readwise-rust.service`:
+```ini
+[Unit]
+Description=Run org-readwise-rust
+
+[Service]
+ExecStart=/bin/bash -i -c '%h/.cargo/bin/org-readwise-rust'
+```
+
+* `~/.config/systemd/user/org-readwise-rust.timer`:
+```ini
+[Unit]
+Description=Run org-readwise-rust
+After=network-online.target
+
+[Timer]
+OnCalendar=*-*-* 09:00:00
+OnActiveSec=1min
+Persistent=true
+OnUnitActiveSec=1d
+
+[Install]
+WantedBy=timers.target
+```
+
+Then enable the timer:
+
+```bash
+systemctl --user enable org-readwise-rust.timer
+systemctl --user start org-readwise-rust.timer
+
+# If you want to test:
+systemctl --user start org-readwise-rust.service
+
+# To see the logs:
+journalctl --user-unit=org-readwise-rust.service
+```
+
 ## See also
 * [org-readwise](https://github.com/CountGreven/org-readwise), written in emacs lisp, has a similar purpose.
 
