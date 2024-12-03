@@ -186,6 +186,7 @@ fn generate_file_content(
     }
     context.insert("readwise_url", &document.readwise_url);
     context.insert("title", &document.title);
+    context.insert("author", &document.author);
     context.insert(
         "saved_at",
         &document.saved_at.format("%Y-%m-%d %a").to_string(),

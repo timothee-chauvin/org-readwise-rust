@@ -4,6 +4,7 @@
 :END:
 #+TITLE: {{ title }}
 
+- author: {{ author }}
 - added: <{{ saved_at }}>
 - read status: {{ read_status }}
 {%- if full_url %}
