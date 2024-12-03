@@ -16,14 +16,4 @@
 
 - tags:
 
-{% if highlights %}
-* readwise:highlights
-{%- for highlight in highlights %}
-** readwise:{{ highlight.id }}
-{{ highlight.content }}
-{%- if highlight.note %}
-*** note
-{{ highlight.note }}
-{%- endif %}
-{%- endfor %}
-{%- endif %}
+{{ highlight_content }}

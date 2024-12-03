@@ -50,7 +50,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let highlights_with_notes =
             get_highlights_with_notes(&highlights_by_parent, &notes_by_parent, &parent_id);
-        let content = generate_file_content(parent, highlights_with_notes, &tera)?;
+
+        let highlight_content = generate_highlight_content(&highlights_with_notes, &tera)?;
+
+        let content = generate_file_content(parent, &highlight_content, &tera)?;
         std::fs::write(&filename, &content)?;
         println!("Created file: {}", filename);
         files_created += 1;
@@ -151,9 +154,18 @@ fn get_highlights_with_notes(
         .collect()
 }
 
+fn generate_highlight_content(
+    highlights_with_notes: &Vec<serde_json::Value>,
+    tera: &Tera,
+) -> Result<String, tera::Error> {
+    let mut highlight_context = Context::new();
+    highlight_context.insert("highlights", highlights_with_notes);
+    tera.render("highlights.tera", &highlight_context)
+}
+
 fn generate_file_content(
     document: &Document,
-    highlights_with_notes: Vec<serde_json::Value>,
+    highlight_content: &str,
     tera: &Tera,
 ) -> Result<String, tera::Error> {
     let uuid = uuid::Uuid::new_v4().to_string();
@@ -178,8 +190,6 @@ fn generate_file_content(
             "TODO"
         },
     );
-    if !highlights_with_notes.is_empty() {
-        context.insert("highlights", &highlights_with_notes);
-    }
+    context.insert("highlight_content", highlight_content);
     tera.render("document.org.tera", &context)
 }
