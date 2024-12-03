@@ -2,9 +2,7 @@ use crate::util::clean_url;
 use crate::SETTINGS;
 
 use chrono::{SecondsFormat, Utc};
-use http_cache_reqwest::{CACacheManager, Cache, CacheMode, HttpCache, HttpCacheOptions};
 use reqwest::Client;
-use reqwest_middleware::ClientBuilder;
 use std::collections::HashMap;
 use std::fs;
 
@@ -121,13 +119,7 @@ async fn fetch_readwise_data(
     dotenv::dotenv().ok();
     let api_key = std::env::var("READWISE_API_KEY")?;
 
-    let client = ClientBuilder::new(Client::new())
-        .with(Cache(HttpCache {
-            mode: CacheMode::NoStore,
-            manager: CACacheManager::default(),
-            options: HttpCacheOptions::default(),
-        }))
-        .build();
+    let client = Client::new();
 
     let mut all_results = Vec::new();
     let mut next_cursor = None;
@@ -153,17 +145,13 @@ async fn fetch_readwise_data(
             url.push_str(&params.join("&"));
         }
 
+        println!("Fetching {}...", url);
+
         let response = client
             .get(&url)
             .header("Authorization", format!("Token {}", api_key))
             .send()
             .await?;
-
-        println!(
-            "Cache {:?} {}",
-            response.headers().get("x-cache").unwrap(),
-            url
-        );
 
         let data: serde_json::Value = response.json().await?;
 
