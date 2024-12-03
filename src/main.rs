@@ -2,6 +2,7 @@ mod readwise_api;
 mod settings;
 mod util;
 
+use chrono::{SecondsFormat, Utc};
 use readwise_api::*;
 use settings::SETTINGS;
 use std::collections::HashMap;
@@ -15,7 +16,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let tera = Tera::new(&SETTINGS.templates_dir.to_string_lossy())?;
     let org_roam_dir = &SETTINGS.org_roam_dir;
     let existing_refs = get_existing_refs(org_roam_dir)?;
-    let documents = get_document_list().await?;
+    let last_updated_after = get_updated_after();
+    let next_updated_after = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
+    let documents = get_document_list(last_updated_after.as_deref()).await?;
     let highlights = get_highlight_list().await?;
     let notes = get_note_list().await?;
 
@@ -59,6 +62,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     println!("\nCreated {} files", files_created);
     println!("Edited {} files", files_edited);
+    // Only save this if everything went well. If the program crashes in the middle, the next run will still use the old updated_after date and no update from readwise will be lost.
+    println!("Saving next updated_after date: {}", next_updated_after);
+    save_updated_after(&next_updated_after);
     let duration = start_time.elapsed();
     println!("Time taken: {:?}", duration);
     Ok(())

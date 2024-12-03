@@ -1,7 +1,7 @@
 use crate::util::clean_url;
 use crate::SETTINGS;
 
-use chrono::{SecondsFormat, Utc};
+use chrono::Utc;
 use reqwest::Client;
 use std::collections::HashMap;
 use std::fs;
@@ -172,14 +172,14 @@ async fn fetch_readwise_data(
     Ok(all_results)
 }
 
-pub async fn get_document_list() -> Result<Vec<Document>, Box<dyn std::error::Error>> {
+pub async fn get_document_list(
+    updated_after: Option<&str>,
+) -> Result<Vec<Document>, Box<dyn std::error::Error>> {
     // Return all documents of type "epub" or "article"
     let mut all_documents = Vec::new();
 
-    let updated_after = get_and_save_updated_after()?;
-
     for category in &SETTINGS.document_categories {
-        let results = fetch_readwise_data(Some(category), updated_after.as_deref()).await?;
+        let results = fetch_readwise_data(Some(category), updated_after).await?;
         println!("Number of {}s: {}", category, results.len());
         let documents: Vec<Document> = results
             .into_iter()
@@ -243,32 +243,25 @@ pub fn note_list_to_map(note_list: Vec<Note>) -> HashMap<String, Note> {
         .collect()
 }
 
-pub fn get_and_save_updated_after() -> Result<Option<String>, Box<dyn std::error::Error>> {
+pub fn get_updated_after() -> Option<String> {
     // Return the last updated_after date from the updated_after_file_path as a string,
     // or return None if the file doesn't exist or the date isn't valid.
-    // In any case, write the current date to the file.
     let path = &SETTINGS.updated_after_file_path;
+    if !path.exists() {
+        return None;
+    }
 
-    // Try to read the existing date from the file
-    let existing_date = if path.exists() {
-        match fs::read_to_string(path) {
-            Ok(contents) => {
-                // Validate that the contents can parse as a date
-                if contents.trim().parse::<chrono::DateTime<Utc>>().is_ok() {
-                    Some(contents.trim().to_string())
-                } else {
-                    None
-                }
-            }
-            Err(_) => None,
-        }
+    // Try to read the existing date from the file and validate it can parse as a date
+    let contents = fs::read_to_string(path).unwrap();
+    let trimmed = contents.trim();
+
+    if trimmed.parse::<chrono::DateTime<Utc>>().is_ok() {
+        Some(trimmed.to_string())
     } else {
         None
-    };
+    }
+}
 
-    // Write current date to file
-    let current_date = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
-    fs::write(path, &current_date)?;
-
-    Ok(existing_date)
+pub fn save_updated_after(date: &str) {
+    fs::write(&SETTINGS.updated_after_file_path, date).unwrap();
 }
