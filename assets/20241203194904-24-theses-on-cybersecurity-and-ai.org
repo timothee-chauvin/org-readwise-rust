@@ -1,0 +1,24 @@
+:PROPERTIES:
+:ID: 9950a8f8-3251-4a73-ae95-9ee5ad6362d3
+:ROAM_REFS: https://tchauvin.com/theses-on-cybersecurity-and-ai
+:END:
+#+TITLE: 24 theses on cybersecurity and AI
+
+- author: Timothee Chauvin
+- added: <2024-12-03 Tue>
+- read status: DONE
+- link: https://tchauvin.com/theses-on-cybersecurity-and-ai
+- readwise link: https://read.readwise.io/read/<redacted, just in case...>
+- date: 2024-10-05
+
+- tags:
+
+* readwise:highlights
+** readwise:01je6xkjvh0grqe2q4mqw2abtn
+Getting to ninety-five isn’t so simple
+*** note (2024-12-03)
+Haha
+** readwise:01je6xkyrmekmwtrten7qnnajq
+Everyone is asking how AI will affect the offense / defense balance in cybersecurity, but no one has the answer. The system is too complex to reason about
+** readwise:01je6xmvx0k6b6r2wbzdnbttqt
+Cybersecurity is heavily bottlenecked on labor on both the offensive and defensive side. In other words, there are vulnerabilities everywhere, and very few people looking. This means that you don’t need superintelligence to have a massive impact on cybersecurity: human-level AI will already be a big deal
