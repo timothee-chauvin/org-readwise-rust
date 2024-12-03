@@ -41,7 +41,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         if existing_refs.contains_key(&parent.roam_ref) {
             let filename = existing_refs[&parent.roam_ref].clone();
-            println!("Filename already exists: {}", filename);
             edit_file(&filename, parent, &highlight_content);
             println!("Edited file: {}", filename);
             files_edited += 1;
@@ -209,8 +208,19 @@ fn edit_file(filename: &str, parent: &Document, highlight_content: &str) {
         .position(|line| line.trim() == "* readwise:highlights")
         .unwrap_or(lines.len());
 
-    // Keep everything before highlights section
-    let mut new_content = lines[..highlight_index].join("\n");
+    // Update read status
+    let mut updated_lines = lines[..highlight_index].to_vec();
+
+    let read_status_line = generate_read_status_line(parent.location.as_str());
+    if let Some(pos) = updated_lines
+        .iter()
+        .position(|line| line.trim().starts_with("- read status:"))
+    {
+        updated_lines[pos] = read_status_line.as_str();
+    }
+
+    // Keep everything before highlights section with updated read status
+    let mut new_content = updated_lines.join("\n");
 
     // Add the new highlight content
     new_content.push('\n');
@@ -218,4 +228,15 @@ fn edit_file(filename: &str, parent: &Document, highlight_content: &str) {
 
     // Write back to file
     std::fs::write(filename, new_content).expect("Failed to write file");
+}
+
+fn generate_read_status_line(location: &str) -> String {
+    format!(
+        "- read status: {}",
+        if location == "archive" {
+            "DONE"
+        } else {
+            "TODO"
+        }
+    )
 }
