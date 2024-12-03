@@ -9,33 +9,6 @@ use std::path::Path;
 use std::process::Command;
 use tera::{Context, Tera};
 
-fn get_existing_refs(
-    org_roam_dir: &Path,
-) -> Result<HashMap<String, String>, Box<dyn std::error::Error>> {
-    // Run ripgrep to find all ROAM_REFS lines in org_roam_dir.
-    // Return a mapping from roam_ref to full filename.
-    let output = Command::new("rg")
-        .args([
-            "--with-filename",
-            "^:ROAM_REFS:",
-            &org_roam_dir.to_string_lossy(),
-        ])
-        .output()?;
-
-    let output_str = String::from_utf8(output.stdout)?;
-
-    // Parse the output into a map of roam_ref -> filename
-    let mut refs_map = HashMap::new();
-    for line in output_str.lines() {
-        // Each line is in the format: filename::ROAM_REFS: ref
-        if let Some((filename, roam_ref)) = line.split_once("::ROAM_REFS:") {
-            let roam_ref = roam_ref.trim().to_string();
-            refs_map.insert(roam_ref, filename.to_string());
-        }
-    }
-    Ok(refs_map)
-}
-
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let start_time = std::time::Instant::now();
@@ -118,6 +91,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let duration = start_time.elapsed();
     println!("Time taken: {:?}", duration);
     Ok(())
+}
+
+fn get_existing_refs(
+    org_roam_dir: &Path,
+) -> Result<HashMap<String, String>, Box<dyn std::error::Error>> {
+    // Run ripgrep to find all ROAM_REFS lines in org_roam_dir.
+    // Return a mapping from roam_ref to full filename.
+    let output = Command::new("rg")
+        .args([
+            "--with-filename",
+            "^:ROAM_REFS:",
+            &org_roam_dir.to_string_lossy(),
+        ])
+        .output()?;
+
+    let output_str = String::from_utf8(output.stdout)?;
+
+    // Parse the output into a map of roam_ref -> filename
+    let mut refs_map = HashMap::new();
+    for line in output_str.lines() {
+        // Each line is in the format: filename::ROAM_REFS: ref
+        if let Some((filename, roam_ref)) = line.split_once("::ROAM_REFS:") {
+            let roam_ref = roam_ref.trim().to_string();
+            refs_map.insert(roam_ref, filename.to_string());
+        }
+    }
+    Ok(refs_map)
 }
 
 fn get_new_entry_filename(org_roam_dir: &Path, title: &str, url: Option<&str>) -> String {
