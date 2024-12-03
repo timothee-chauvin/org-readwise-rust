@@ -116,7 +116,7 @@ async fn fetch_readwise_data(
     category: Option<&str>,
     updated_after: Option<&str>,
 ) -> Result<Vec<serde_json::Value>, Box<dyn std::error::Error>> {
-    dotenv::dotenv().ok();
+    dotenv::from_path(&SETTINGS.config_dir.join(".env")).ok();
     let api_key = std::env::var("READWISE_API_KEY")?;
 
     let client = Client::new();

@@ -9,9 +9,18 @@ In addition to storing all your highlights and notes, the source URL of each doc
 ## Make it run
 You need to let the program know about your readwise API key, for instance by adding it in a `.env` file at the top level of this directory (see [.env.template](.env.template)).
 
+This program expects its configuration files in `~/.config/org-readwise-rust/`:
+```bash
+CONFIG_DIR=~/.config/org-readwise-rust
+mkdir -p $CONFIG_DIR
+cp config/config.toml $CONFIG_DIR
+cp .env $CONFIG_DIR
+cp -r templates $CONFIG_DIR
+```
+
 There are a few options you can edit in [config.toml](config/config.toml), though you should also read the source code to make sure it does what you want.
 
-Then `cargo run` should work.
+Then run `cargo install --path .` to install the executable into `~/.cargo/bin` and use it from anywhere.
 
 ## How it works
 The program fetches your documents from the [Reader API](https://readwise.io/reader_api), from categories `article`, `epub`, `pdf` (for top-level documents) and `highlight` and `note`.
