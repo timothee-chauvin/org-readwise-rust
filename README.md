@@ -86,6 +86,9 @@ journalctl --user-unit=org-readwise-rust.service
 ## See also
 * [org-readwise](https://github.com/CountGreven/org-readwise), written in emacs lisp, has a similar purpose.
 
+## Known issues
+* The highlights and notes aren't sorted by their order of appearance in the document, but chronologically based on when you created / updated them.
+
 ## FAQ
 ### Why use `rg` instead of the org-roam SQLite database?
 `rg` is just as fast, while being simpler to implement and more reliable.
