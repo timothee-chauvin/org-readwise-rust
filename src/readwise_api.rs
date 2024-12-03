@@ -61,6 +61,22 @@ impl Document {
         let has_url = source_url.starts_with("http");
         let clean_url = clean_url(&source_url);
         let id = get_string(value, "id")?;
+        // published_date is either Null, or a Unix timestamp like Number(1064880000000)
+        let published_date = match value.get("published_date").and_then(|v| v.as_i64()) {
+            Some(timestamp) => chrono::DateTime::from_timestamp(timestamp / 1000, 0),
+            None => None,
+        };
+        let category = get_string(value, "category")?;
+        // For a book with a published date, edit the title to be "Title (Year)"
+        let title = if category == "epub" && published_date.is_some() {
+            format!(
+                "{} ({})",
+                get_string(value, "title")?,
+                published_date.unwrap().format("%Y")
+            )
+        } else {
+            get_string(value, "title")?
+        };
         Ok(Self {
             id: id.clone(),
             has_url,
@@ -70,19 +86,15 @@ impl Document {
             },
             source_url: clean_url,
             readwise_url: get_string(value, "url")?,
-            title: get_string(value, "title")?,
-            category: get_string(value, "category")?,
+            title,
+            category,
             location: get_string(value, "location")?,
             author: get_string(value, "author")?,
             // saved_at is an ISO 8601 timestamp
             saved_at: chrono::DateTime::parse_from_rfc3339(&get_string(value, "saved_at")?)
                 .unwrap()
                 .with_timezone(&Utc),
-            // published_date is either Null, or a Unix timestamp like Number(1064880000000)
-            published_date: match value.get("published_date").and_then(|v| v.as_i64()) {
-                Some(timestamp) => chrono::DateTime::from_timestamp(timestamp / 1000, 0),
-                None => None,
-            },
+            published_date,
         })
     }
 }
