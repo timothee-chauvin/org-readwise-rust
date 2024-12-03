@@ -4,7 +4,7 @@
 :END:
 #+TITLE: {{ title }}
 
-- added: <{{ today }}>
+- added: <{{ saved_at }}>
 - read status: {{ read_status }}
 {%- if full_url %}
 - link: {{ full_url }}

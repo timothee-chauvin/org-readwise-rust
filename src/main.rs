@@ -187,8 +187,8 @@ fn generate_file_content(
     context.insert("readwise_url", &document.readwise_url);
     context.insert("title", &document.title);
     context.insert(
-        "today",
-        &chrono::Local::now().format("%Y-%m-%d %a").to_string(),
+        "saved_at",
+        &document.saved_at.format("%Y-%m-%d %a").to_string(),
     );
     if let Some(published_date) = document.published_date {
         context.insert(
