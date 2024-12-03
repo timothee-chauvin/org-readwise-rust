@@ -180,16 +180,13 @@ pub async fn get_document_list() -> Result<Vec<Document>, Box<dyn std::error::Er
 
     for category in &SETTINGS.document_categories {
         let results = fetch_readwise_data(Some(category), updated_after.as_deref()).await?;
-        if category == "epub" {
-            println!("Epubs: {:#?}", results);
-        }
+        println!("Number of {}s: {}", category, results.len());
         let documents: Vec<Document> = results
             .into_iter()
             .filter_map(|value| Document::new(&value).ok())
             .collect();
         all_documents.extend(documents);
     }
-    println!("Number of documents: {}", all_documents.len());
 
     Ok(all_documents)
 }
