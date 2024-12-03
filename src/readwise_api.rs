@@ -48,7 +48,6 @@ pub struct Document {
     pub source_url: String,
     pub readwise_url: String,
     pub title: String,
-    pub category: String,
     pub location: String,
     pub author: String,
     pub saved_at: chrono::DateTime<Utc>,
@@ -87,7 +86,6 @@ impl Document {
             source_url: clean_url,
             readwise_url: get_string(value, "url")?,
             title,
-            category,
             location: get_string(value, "location")?,
             author: get_string(value, "author")?,
             // saved_at is an ISO 8601 timestamp
@@ -101,7 +99,6 @@ impl Document {
 
 #[derive(Debug, Clone)]
 pub struct Note {
-    pub id: String,
     pub parent_id: String,
     pub saved_at: String,
     pub content: String,
@@ -110,7 +107,6 @@ pub struct Note {
 impl Note {
     fn new(value: &serde_json::Value) -> Result<Self, Box<dyn std::error::Error>> {
         Ok(Self {
-            id: get_string(value, "id")?,
             parent_id: get_string(value, "parent_id")?,
             saved_at: get_string(value, "saved_at")?,
             content: get_string(value, "content")?,
