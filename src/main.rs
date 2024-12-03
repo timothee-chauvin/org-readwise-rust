@@ -70,20 +70,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "TODO"
             },
         );
-        if let Some(entry_highlights) = highlights_by_parent.get(&parent_id) {
-            // Create a vector of highlights with their notes
-            let highlights_with_notes: Vec<serde_json::Value> = entry_highlights
-                .iter()
-                .rev() // Reverse the order of highlights so they end up in the correct order in the org file
-                .map(|highlight| {
-                    let note = notes_by_parent.get(&highlight.id);
-                    serde_json::json!({
-                        "id": highlight.id,
-                        "content": highlight.content,
-                        "note": note.map(|n| n.content.clone()),
-                    })
-                })
-                .collect();
+        let highlights_with_notes =
+            get_highlights_with_notes(&highlights_by_parent, &notes_by_parent, &parent_id);
+        if !highlights_with_notes.is_empty() {
             context.insert("highlights", &highlights_with_notes);
         }
         let content = tera.render("document.org.tera", &context)?;
@@ -164,5 +153,25 @@ fn get_duplicate_titles(documents: &[Document]) -> Vec<String> {
         .iter()
         .filter(|(_, count)| **count > 1)
         .map(|(title, _)| title.clone())
+        .collect()
+}
+
+fn get_highlights_with_notes(
+    highlights_by_parent: &HashMap<String, Vec<Highlight>>,
+    notes_by_parent: &HashMap<String, Note>,
+    parent_id: &str,
+) -> Vec<serde_json::Value> {
+    let highlights = highlights_by_parent.get(parent_id).unwrap();
+    highlights
+        .iter()
+        .rev() // Reverse the order of highlights so they end up in the correct order in the org file
+        .map(|highlight| {
+            let note = notes_by_parent.get(&highlight.id);
+            serde_json::json!({
+                "id": highlight.id,
+                "content": highlight.content,
+                "note": note.map(|n| n.content.clone()),
+            })
+        })
         .collect()
 }
