@@ -48,34 +48,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             get_new_entry_filename(org_roam_dir, &parent.title, None)
         };
 
-        let uuid = uuid::Uuid::new_v4().to_string();
-
-        let mut context = Context::new();
-        context.insert("uuid", &uuid);
-        context.insert("roam_ref", &parent.roam_ref);
-        if parent.has_url {
-            context.insert("full_url", &parent.source_url);
-        }
-        context.insert("readwise_url", &parent.readwise_url);
-        context.insert("title", &parent.title);
-        context.insert(
-            "today",
-            &chrono::Local::now().format("%Y-%m-%d %a").to_string(),
-        );
-        context.insert(
-            "read_status",
-            if parent.location.as_str() == "archive" {
-                "DONE"
-            } else {
-                "TODO"
-            },
-        );
         let highlights_with_notes =
             get_highlights_with_notes(&highlights_by_parent, &notes_by_parent, &parent_id);
-        if !highlights_with_notes.is_empty() {
-            context.insert("highlights", &highlights_with_notes);
-        }
-        let content = tera.render("document.org.tera", &context)?;
+        let content = generate_file_content(parent, highlights_with_notes, &tera)?;
         std::fs::write(&filename, &content)?;
         println!("Created file: {}", filename);
         files_created += 1;
@@ -174,4 +149,37 @@ fn get_highlights_with_notes(
             })
         })
         .collect()
+}
+
+fn generate_file_content(
+    document: &Document,
+    highlights_with_notes: Vec<serde_json::Value>,
+    tera: &Tera,
+) -> Result<String, tera::Error> {
+    let uuid = uuid::Uuid::new_v4().to_string();
+
+    let mut context = Context::new();
+    context.insert("uuid", &uuid);
+    context.insert("roam_ref", &document.roam_ref);
+    if document.has_url {
+        context.insert("full_url", &document.source_url);
+    }
+    context.insert("readwise_url", &document.readwise_url);
+    context.insert("title", &document.title);
+    context.insert(
+        "today",
+        &chrono::Local::now().format("%Y-%m-%d %a").to_string(),
+    );
+    context.insert(
+        "read_status",
+        if document.location.as_str() == "archive" {
+            "DONE"
+        } else {
+            "TODO"
+        },
+    );
+    if !highlights_with_notes.is_empty() {
+        context.insert("highlights", &highlights_with_notes);
+    }
+    tera.render("document.org.tera", &context)
 }
