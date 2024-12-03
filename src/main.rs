@@ -198,11 +198,7 @@ fn generate_file_content(
     }
     context.insert(
         "read_status",
-        if document.location.as_str() == "archive" {
-            "DONE"
-        } else {
-            "TODO"
-        },
+        read_status_by_location(document.location.as_str()),
     );
     context.insert("highlight_content", highlight_content);
     tera.render("document.org.tera", &context)
@@ -222,7 +218,10 @@ fn edit_file(filename: &str, parent: &Document, highlight_content: &str) {
     // Update read status
     let mut updated_lines = lines[..highlight_index].to_vec();
 
-    let read_status_line = generate_read_status_line(parent.location.as_str());
+    let read_status_line = format!(
+        "- read status: {}",
+        read_status_by_location(parent.location.as_str())
+    );
     if let Some(pos) = updated_lines
         .iter()
         .position(|line| line.trim().starts_with("- read status:"))
@@ -241,13 +240,10 @@ fn edit_file(filename: &str, parent: &Document, highlight_content: &str) {
     std::fs::write(filename, new_content).expect("Failed to write file");
 }
 
-fn generate_read_status_line(location: &str) -> String {
-    format!(
-        "- read status: {}",
-        if location == "archive" {
-            "DONE"
-        } else {
-            "TODO"
-        }
-    )
+fn read_status_by_location(location: &str) -> &str {
+    if location == "archive" {
+        "DONE"
+    } else {
+        "TODO"
+    }
 }
