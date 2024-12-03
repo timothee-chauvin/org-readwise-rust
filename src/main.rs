@@ -163,6 +163,7 @@ fn generate_highlight_content(
     highlights_with_notes: &Vec<serde_json::Value>,
     tera: &Tera,
 ) -> Result<String, tera::Error> {
+    // Generate the highlight and note section as a string
     if highlights_with_notes.is_empty() {
         return Ok(String::new());
     }

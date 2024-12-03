@@ -17,4 +17,4 @@
 
 - tags:
 
-{{ highlight_content }}
+{{ highlight_content | trim_end }}
