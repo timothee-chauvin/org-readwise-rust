@@ -33,24 +33,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .find(|d| d.id == parent_id)
             .expect("Parent document must exist since we got its ID from highlights_by_parent");
 
-        let full_url = parent.source_url.clone();
+        // Skip if file already exists in org-roam
+        if existing_refs.contains_key(&parent.roam_ref) {
+            println!(
+                "Filename already exists: {}",
+                existing_refs[&parent.roam_ref]
+            );
+            continue;
+        }
+
         let filename = if duplicate_titles.contains(&parent.title) {
-            get_new_entry_filename(org_roam_dir, &parent.title, Some(&full_url))
+            get_new_entry_filename(org_roam_dir, &parent.title, Some(&parent.source_url))
         } else {
             get_new_entry_filename(org_roam_dir, &parent.title, None)
         };
 
         let uuid = uuid::Uuid::new_v4().to_string();
-        // Skip if file already exists in org-roam
-        if existing_refs.contains_key(&parent.roam_ref) {
-            continue;
-        }
 
         let mut context = Context::new();
         context.insert("uuid", &uuid);
         context.insert("roam_ref", &parent.roam_ref);
         if parent.has_url {
-            context.insert("full_url", &full_url);
+            context.insert("full_url", &parent.source_url);
         }
         context.insert("readwise_url", &parent.readwise_url);
         context.insert("title", &parent.title);
