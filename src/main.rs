@@ -149,6 +149,11 @@ fn get_highlights_with_notes(
                 "id": highlight.id,
                 "content": highlight.content,
                 "note": note.map(|n| n.content.clone()),
+                "note_saved_at": note.map(|n| {
+                    chrono::DateTime::parse_from_rfc3339(&n.saved_at)
+                        .map(|dt| dt.format("%Y-%m-%d").to_string())
+                        .unwrap()
+                }),
             })
         })
         .collect()
@@ -185,6 +190,12 @@ fn generate_file_content(
         "today",
         &chrono::Local::now().format("%Y-%m-%d %a").to_string(),
     );
+    if let Some(published_date) = document.published_date {
+        context.insert(
+            "published_date",
+            &published_date.format("%Y-%m-%d").to_string(),
+        );
+    }
     context.insert(
         "read_status",
         if document.location.as_str() == "archive" {

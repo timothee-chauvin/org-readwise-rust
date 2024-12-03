@@ -4,7 +4,7 @@
 ** readwise:{{ highlight.id }}
 {{ highlight.content }}
 {%- if highlight.note %}
-*** note
+*** note ({{ highlight.note_saved_at }})
 {{ highlight.note }}
 {%- endif %}
 {%- endfor %}

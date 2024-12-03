@@ -15,12 +15,24 @@ pub struct Highlight {
     pub content: String,
 }
 
+fn get_string(
+    value: &serde_json::Value,
+    field: &str,
+) -> Result<String, Box<dyn std::error::Error>> {
+    Ok(value
+        .get(field)
+        .ok_or(format!("Missing {}", field))?
+        .as_str()
+        .ok_or(format!("{} is not a string", field))?
+        .to_string())
+}
+
 impl Highlight {
-    fn new(value: &serde_json::Value) -> Option<Self> {
-        Some(Self {
-            id: value.get("id")?.as_str()?.to_string(),
-            parent_id: value.get("parent_id")?.as_str()?.to_string(),
-            content: value.get("content")?.as_str()?.to_string(),
+    fn new(value: &serde_json::Value) -> Result<Self, Box<dyn std::error::Error>> {
+        Ok(Self {
+            id: get_string(value, "id")?,
+            parent_id: get_string(value, "parent_id")?,
+            content: get_string(value, "content")?,
         })
     }
 }
@@ -39,19 +51,17 @@ pub struct Document {
     pub category: String,
     pub location: String,
     pub author: String,
-    pub saved_at: String,
+    pub saved_at: chrono::DateTime<Utc>,
+    pub published_date: Option<chrono::DateTime<Utc>>,
 }
 
 impl Document {
-    fn new(value: &serde_json::Value) -> Option<Self> {
-        let has_url = value
-            .get("source_url")
-            .and_then(|url| url.as_str())
-            .map(|url| url.starts_with("http"))
-            .unwrap_or(false);
-        let clean_url = clean_url(value.get("source_url")?.as_str()?);
-        let id = value.get("id")?.as_str()?.to_string();
-        Some(Self {
+    fn new(value: &serde_json::Value) -> Result<Self, Box<dyn std::error::Error>> {
+        let source_url = get_string(value, "source_url")?;
+        let has_url = source_url.starts_with("http");
+        let clean_url = clean_url(&source_url);
+        let id = get_string(value, "id")?;
+        Ok(Self {
             id: id.clone(),
             has_url,
             roam_ref: match has_url {
@@ -59,12 +69,20 @@ impl Document {
                 false => format!("@readwise_{}", id),
             },
             source_url: clean_url,
-            readwise_url: value.get("url")?.as_str()?.to_string(),
-            title: value.get("title")?.as_str()?.to_string(),
-            category: value.get("category")?.as_str()?.to_string(),
-            location: value.get("location")?.as_str()?.to_string(),
-            author: value.get("author")?.as_str()?.to_string(),
-            saved_at: value.get("saved_at")?.as_str()?.to_string(),
+            readwise_url: get_string(value, "url")?,
+            title: get_string(value, "title")?,
+            category: get_string(value, "category")?,
+            location: get_string(value, "location")?,
+            author: get_string(value, "author")?,
+            // saved_at is an ISO 8601 timestamp
+            saved_at: chrono::DateTime::parse_from_rfc3339(&get_string(value, "saved_at")?)
+                .unwrap()
+                .with_timezone(&Utc),
+            // published_date is either Null, or a Unix timestamp like Number(1064880000000)
+            published_date: match value.get("published_date").and_then(|v| v.as_i64()) {
+                Some(timestamp) => chrono::DateTime::from_timestamp(timestamp / 1000, 0),
+                None => None,
+            },
         })
     }
 }
@@ -78,12 +96,12 @@ pub struct Note {
 }
 
 impl Note {
-    fn new(value: &serde_json::Value) -> Option<Self> {
-        Some(Self {
-            id: value.get("id")?.as_str()?.to_string(),
-            parent_id: value.get("parent_id")?.as_str()?.to_string(),
-            saved_at: value.get("saved_at")?.as_str()?.to_string(),
-            content: value.get("content")?.as_str()?.to_string(),
+    fn new(value: &serde_json::Value) -> Result<Self, Box<dyn std::error::Error>> {
+        Ok(Self {
+            id: get_string(value, "id")?,
+            parent_id: get_string(value, "parent_id")?,
+            saved_at: get_string(value, "saved_at")?,
+            content: get_string(value, "content")?,
         })
     }
 }
@@ -97,7 +115,7 @@ async fn fetch_readwise_data(
 
     let client = ClientBuilder::new(Client::new())
         .with(Cache(HttpCache {
-            mode: CacheMode::IgnoreRules,
+            mode: CacheMode::NoStore,
             manager: CACacheManager::default(),
             options: HttpCacheOptions::default(),
         }))
@@ -166,13 +184,16 @@ pub async fn get_document_list() -> Result<Vec<Document>, Box<dyn std::error::Er
 
     for category in &SETTINGS.document_categories {
         let results = fetch_readwise_data(Some(category), updated_after.as_deref()).await?;
-        println!("Number of results for {}: {}", category, results.len());
+        if category == "epub" {
+            println!("Epubs: {:#?}", results);
+        }
         let documents: Vec<Document> = results
             .into_iter()
-            .filter_map(|value| Document::new(&value))
+            .filter_map(|value| Document::new(&value).ok())
             .collect();
         all_documents.extend(documents);
     }
+    println!("Number of documents: {}", all_documents.len());
 
     Ok(all_documents)
 }
@@ -182,7 +203,7 @@ pub async fn get_note_list() -> Result<Vec<Note>, Box<dyn std::error::Error>> {
     println!("Number of notes: {}", json_results.len());
     let notes = json_results
         .into_iter()
-        .filter_map(|value| Note::new(&value))
+        .filter_map(|value| Note::new(&value).ok())
         .collect();
     Ok(notes)
 }
@@ -192,7 +213,7 @@ pub async fn get_highlight_list() -> Result<Vec<Highlight>, Box<dyn std::error::
     println!("Number of highlights: {}", json_results.len());
     let highlights: Vec<Highlight> = json_results
         .into_iter()
-        .filter_map(|value| Highlight::new(&value))
+        .filter_map(|value| Highlight::new(&value).ok())
         // There's a surprising number of empty highlights
         .filter(|h| !h.content.is_empty())
         .collect();
