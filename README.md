@@ -40,7 +40,7 @@ This program is designed to be run regularly, e.g. daily. To only update what ne
 An ideal Reader API would allow us to get all the top-level documents using `updatedAfter`, then get all the highlights and notes within these documents (even those that haven't been updated).
 
 ## Sample output
-To see what the created files look like, head to the [sample output file](assets/20241203194904-24-theses-on-cybersecurity-and-ai.org).
+To see what the created files look like, head to the [sample output file](assets/20241203194904-24-theses-on-cybersecurity-and-ai.org) (on github, click on "Raw" to see everything).
 
 ## How to run it regularly
 You may use any method, but here's a suggestion with `systemctl`:
