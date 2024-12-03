@@ -1,4 +1,4 @@
-{% if highlights %}
+{% if highlights -%}
 * readwise:highlights
 {%- for highlight in highlights %}
 ** readwise:{{ highlight.id }}

@@ -26,6 +26,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Duplicate titles: {:?}", duplicate_titles);
 
     let mut files_created = 0;
+    let mut files_edited = 0;
     for parent_id in highlights_by_parent.keys().cloned() {
         // Find the parent document
         let parent = documents
@@ -33,32 +34,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .find(|d| d.id == parent_id)
             .expect("Parent document must exist since we got its ID from highlights_by_parent");
 
-        // Skip if file already exists in org-roam
-        if existing_refs.contains_key(&parent.roam_ref) {
-            println!(
-                "Filename already exists: {}",
-                existing_refs[&parent.roam_ref]
-            );
-            continue;
-        }
-
-        let filename = if duplicate_titles.contains(&parent.title) {
-            get_new_entry_filename(org_roam_dir, &parent.title, Some(&parent.source_url))
-        } else {
-            get_new_entry_filename(org_roam_dir, &parent.title, None)
-        };
-
         let highlights_with_notes =
             get_highlights_with_notes(&highlights_by_parent, &notes_by_parent, &parent_id);
 
         let highlight_content = generate_highlight_content(&highlights_with_notes, &tera)?;
 
-        let content = generate_file_content(parent, &highlight_content, &tera)?;
-        std::fs::write(&filename, &content)?;
-        println!("Created file: {}", filename);
-        files_created += 1;
+        if existing_refs.contains_key(&parent.roam_ref) {
+            let filename = existing_refs[&parent.roam_ref].clone();
+            println!("Filename already exists: {}", filename);
+            edit_file(&filename, parent, &highlight_content);
+            println!("Edited file: {}", filename);
+            files_edited += 1;
+        } else {
+            let filename = if duplicate_titles.contains(&parent.title) {
+                get_new_entry_filename(org_roam_dir, &parent.title, Some(&parent.source_url))
+            } else {
+                get_new_entry_filename(org_roam_dir, &parent.title, None)
+            };
+
+            let content = generate_file_content(parent, &highlight_content, &tera)?;
+            std::fs::write(&filename, &content)?;
+            println!("Created file: {}", filename);
+            files_created += 1;
+        }
     }
     println!("\nCreated {} files", files_created);
+    println!("Edited {} files", files_edited);
     let duration = start_time.elapsed();
     println!("Time taken: {:?}", duration);
     Ok(())
@@ -158,6 +159,9 @@ fn generate_highlight_content(
     highlights_with_notes: &Vec<serde_json::Value>,
     tera: &Tera,
 ) -> Result<String, tera::Error> {
+    if highlights_with_notes.is_empty() {
+        return Ok(String::new());
+    }
     let mut highlight_context = Context::new();
     highlight_context.insert("highlights", highlights_with_notes);
     tera.render("highlights.tera", &highlight_context)
@@ -192,4 +196,26 @@ fn generate_file_content(
     );
     context.insert("highlight_content", highlight_content);
     tera.render("document.org.tera", &context)
+}
+
+fn edit_file(filename: &str, parent: &Document, highlight_content: &str) {
+    // Read all lines from file
+    let content = std::fs::read_to_string(filename).expect("Failed to read file");
+    let lines: Vec<_> = content.lines().collect();
+
+    // Find index where highlights section starts
+    let highlight_index = lines
+        .iter()
+        .position(|line| line.trim() == "* readwise:highlights")
+        .unwrap_or(lines.len());
+
+    // Keep everything before highlights section
+    let mut new_content = lines[..highlight_index].join("\n");
+
+    // Add the new highlight content
+    new_content.push('\n');
+    new_content.push_str(highlight_content);
+
+    // Write back to file
+    std::fs::write(filename, new_content).expect("Failed to write file");
 }
