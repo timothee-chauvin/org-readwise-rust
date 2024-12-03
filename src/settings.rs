@@ -8,6 +8,7 @@ pub struct Settings {
     pub org_roam_dir: PathBuf,
     pub templates_dir: PathBuf,
     pub updated_after_file_path: PathBuf,
+    pub document_categories: Vec<String>,
 }
 
 pub static SETTINGS: Lazy<Settings> = Lazy::new(|| {

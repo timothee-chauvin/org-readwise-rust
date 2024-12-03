@@ -164,7 +164,7 @@ pub async fn get_document_list() -> Result<Vec<Document>, Box<dyn std::error::Er
 
     let updated_after = get_and_save_updated_after()?;
 
-    for category in ["epub", "article", "pdf"] {
+    for category in &SETTINGS.document_categories {
         let results = fetch_readwise_data(Some(category), updated_after.as_deref()).await?;
         println!("Number of results for {}: {}", category, results.len());
         let documents: Vec<Document> = results
