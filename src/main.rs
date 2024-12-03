@@ -3,7 +3,7 @@ mod settings;
 mod util;
 
 use readwise_api::*;
-use settings::Settings;
+use settings::SETTINGS;
 use std::collections::HashMap;
 use std::path::Path;
 use std::process::Command;
@@ -39,9 +39,8 @@ fn get_existing_refs(
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let start_time = std::time::Instant::now();
-    let settings = Settings::new()?;
-    let tera = Tera::new(&settings.templates_dir.to_string_lossy())?;
-    let org_roam_dir = &settings.org_roam_dir;
+    let tera = Tera::new(&SETTINGS.templates_dir.to_string_lossy())?;
+    let org_roam_dir = &SETTINGS.org_roam_dir;
     let existing_refs = get_existing_refs(org_roam_dir)?;
     let documents = get_document_list().await?;
     let highlights = get_highlight_list().await?;

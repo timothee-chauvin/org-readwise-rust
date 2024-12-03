@@ -1483,6 +1483,7 @@ dependencies = [
  "futures",
  "http-cache-reqwest",
  "md5",
+ "once_cell",
  "reqwest",
  "reqwest-middleware",
  "rusqlite",

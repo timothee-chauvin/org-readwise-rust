@@ -1,8 +1,12 @@
 use crate::util::clean_url;
+use crate::SETTINGS;
+
+use chrono::{SecondsFormat, Utc};
 use http_cache_reqwest::{CACacheManager, Cache, CacheMode, HttpCache, HttpCacheOptions};
 use reqwest::Client;
 use reqwest_middleware::ClientBuilder;
 use std::collections::HashMap;
+use std::fs;
 
 #[derive(Debug, Clone)]
 pub struct Highlight {
@@ -83,8 +87,10 @@ impl Note {
         })
     }
 }
+
 async fn fetch_readwise_data(
     category: Option<&str>,
+    updated_after: Option<&str>,
 ) -> Result<Vec<serde_json::Value>, Box<dyn std::error::Error>> {
     dotenv::dotenv().ok();
     let api_key = std::env::var("READWISE_API_KEY")?;
@@ -110,6 +116,10 @@ async fn fetch_readwise_data(
 
         if let Some(cursor) = next_cursor {
             params.push(format!("pageCursor={}", cursor));
+        }
+
+        if let Some(updated_after) = updated_after {
+            params.push(format!("updatedAfter={}", updated_after));
         }
 
         if !params.is_empty() {
@@ -152,8 +162,11 @@ pub async fn get_document_list() -> Result<Vec<Document>, Box<dyn std::error::Er
     // Return all documents of type "epub" or "article"
     let mut all_documents = Vec::new();
 
+    let updated_after = get_and_save_updated_after()?;
+
     for category in ["epub", "article", "pdf"] {
-        let results = fetch_readwise_data(Some(category)).await?;
+        let results = fetch_readwise_data(Some(category), updated_after.as_deref()).await?;
+        println!("Number of results for {}: {}", category, results.len());
         let documents: Vec<Document> = results
             .into_iter()
             .filter_map(|value| Document::new(&value))
@@ -165,7 +178,8 @@ pub async fn get_document_list() -> Result<Vec<Document>, Box<dyn std::error::Er
 }
 
 pub async fn get_note_list() -> Result<Vec<Note>, Box<dyn std::error::Error>> {
-    let json_results = fetch_readwise_data(Some("note")).await?;
+    let json_results = fetch_readwise_data(Some("note"), None).await?;
+    println!("Number of notes: {}", json_results.len());
     let notes = json_results
         .into_iter()
         .filter_map(|value| Note::new(&value))
@@ -174,7 +188,8 @@ pub async fn get_note_list() -> Result<Vec<Note>, Box<dyn std::error::Error>> {
 }
 
 pub async fn get_highlight_list() -> Result<Vec<Highlight>, Box<dyn std::error::Error>> {
-    let json_results = fetch_readwise_data(Some("highlight")).await?;
+    let json_results = fetch_readwise_data(Some("highlight"), None).await?;
+    println!("Number of highlights: {}", json_results.len());
     let highlights: Vec<Highlight> = json_results
         .into_iter()
         .filter_map(|value| Highlight::new(&value))
@@ -212,4 +227,34 @@ pub fn note_list_to_map(note_list: Vec<Note>) -> HashMap<String, Note> {
         .into_iter()
         .map(|note| (note.parent_id.clone(), note))
         .collect()
+}
+
+pub fn get_and_save_updated_after() -> Result<Option<String>, Box<dyn std::error::Error>> {
+    // Return the last updated_after date from the updated_after_file_path as a string,
+    // or return None if the file doesn't exist or the date isn't valid.
+    // In any case, write the current date to the file.
+    let path = &SETTINGS.updated_after_file_path;
+
+    // Try to read the existing date from the file
+    let existing_date = if path.exists() {
+        match fs::read_to_string(path) {
+            Ok(contents) => {
+                // Validate that the contents can parse as a date
+                if contents.trim().parse::<chrono::DateTime<Utc>>().is_ok() {
+                    Some(contents.trim().to_string())
+                } else {
+                    None
+                }
+            }
+            Err(_) => None,
+        }
+    } else {
+        None
+    };
+
+    // Write current date to file
+    let current_date = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
+    fs::write(path, &current_date)?;
+
+    Ok(existing_date)
 }
