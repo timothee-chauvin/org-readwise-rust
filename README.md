@@ -62,9 +62,7 @@ After=network-online.target
 
 [Timer]
 OnCalendar=*-*-* 09:00:00
-OnActiveSec=1min
 Persistent=true
-OnUnitActiveSec=1d
 
 [Install]
 WantedBy=timers.target
