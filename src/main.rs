@@ -16,7 +16,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let tera = Tera::new(&SETTINGS.templates_dir.to_string_lossy())?;
     let org_roam_dir = &SETTINGS.org_roam_dir;
     let existing_refs = get_existing_refs(org_roam_dir)?;
-    let last_updated_after = get_updated_after();
+    let last_updated_after = get_updated_after().unwrap();
     let next_updated_after = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
     let documents = get_document_list(last_updated_after.as_deref()).await?;
     if documents.is_empty() {

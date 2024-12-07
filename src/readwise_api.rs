@@ -243,22 +243,22 @@ pub fn note_list_to_map(note_list: Vec<Note>) -> HashMap<String, Note> {
         .collect()
 }
 
-pub fn get_updated_after() -> Option<String> {
+pub fn get_updated_after() -> Result<Option<String>, Box<dyn std::error::Error>> {
     // Return the last updated_after date from the updated_after_file_path as a string,
-    // or return None if the file doesn't exist or the date isn't valid.
+    // or return None if the file doesn't exist.
+    // Returns an error if the file exists but contains an invalid date.
     let path = &SETTINGS.updated_after_file_path;
     if !path.exists() {
-        return None;
+        return Ok(None);
     }
 
     // Try to read the existing date from the file and validate it can parse as a date
-    let contents = fs::read_to_string(path).unwrap();
+    let contents = fs::read_to_string(path)?;
     let trimmed = contents.trim();
 
-    if trimmed.parse::<chrono::DateTime<Utc>>().is_ok() {
-        Some(trimmed.to_string())
-    } else {
-        None
+    match trimmed.parse::<chrono::DateTime<Utc>>() {
+        Ok(_) => Ok(Some(trimmed.to_string())),
+        Err(e) => Err(format!("Invalid date format in {}: {}", path.display(), e).into()),
     }
 }
 
