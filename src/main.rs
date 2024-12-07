@@ -19,6 +19,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let last_updated_after = get_updated_after();
     let next_updated_after = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
     let documents = get_document_list(last_updated_after.as_deref()).await?;
+    if documents.is_empty() {
+        println!("No documents found to process. Exiting.");
+        return Ok(());
+    }
     let highlights = get_highlight_list().await?;
     let notes = get_note_list().await?;
 
