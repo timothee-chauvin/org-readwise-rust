@@ -96,3 +96,5 @@ Who knows?
 
 ![Who knows?](assets/who_knows.png)
 
+### Does this support top-level document notes, in addition to notes under a highlight?
+No. In fact, as of 2024-12-18, these top-level notes don't even seem to be returned by the Reader API. The solution is to not use them.
