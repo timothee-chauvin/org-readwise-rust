@@ -91,10 +91,5 @@ journalctl --user-unit=org-readwise-rust.service
 ### Why use `rg` instead of the org-roam SQLite database?
 `rg` is just as fast, while being simpler to implement and more reliable.
 
-### The Reader API documentation says that their rate limit is 20 requests per minute, but they only return 100 elements per request. What happens if I have more than 2,000 highlights or notes?
-Who knows?
-
-![Who knows?](assets/who_knows.png)
-
 ### Does this support top-level document notes, in addition to notes under a highlight?
 No. In fact, as of 2024-12-18, these top-level notes don't even seem to be returned by the Reader API. The solution is to not use them.

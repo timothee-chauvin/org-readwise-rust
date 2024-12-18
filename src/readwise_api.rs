@@ -2,9 +2,10 @@ use crate::util::clean_url;
 use crate::SETTINGS;
 
 use chrono::Utc;
-use reqwest::Client;
+use reqwest::{Client, StatusCode};
 use std::collections::HashMap;
 use std::fs;
+use tokio::time::{sleep, Duration};
 
 #[derive(Debug, Clone)]
 pub struct Highlight {
@@ -147,17 +148,49 @@ async fn fetch_readwise_data(
 
         println!("Fetching {}...", url);
 
-        let response = client
-            .get(&url)
-            .header("Authorization", format!("Token {}", api_key))
-            .send()
-            .await?;
+        let mut retry_count = 0;
+        let response = loop {
+            let response = client
+                .get(&url)
+                .header("Authorization", format!("Token {}", api_key))
+                .send()
+                .await?;
+
+            let status = response.status();
+            match status {
+                StatusCode::OK => break response,
+                StatusCode::TOO_MANY_REQUESTS => {
+                    println!("{} - {}", status, response.text().await?);
+                    // Note: the response text looks like {"detail":"Request was throttled. Expected available in 50 seconds."}
+                    // We could parse this, but the format isn't guaranteed to remain the same, so we do something simple instead.
+                    let wait_s = match retry_count {
+                        0 => 60,
+                        1 => 120,
+                        2 => 240,
+                        _ => return Err("Still rate limited despite retries".into()),
+                    };
+                    println!("Rate limited. Waiting {} seconds before retry...", wait_s);
+                    sleep(Duration::from_secs(wait_s)).await;
+                    retry_count += 1;
+                }
+                _ => {
+                    return Err(format!(
+                        "Unexpected status: {} - {}",
+                        status,
+                        response.text().await?
+                    )
+                    .into());
+                }
+            }
+        };
 
         let data: serde_json::Value = response.json().await?;
 
-        if let Some(results) = data.get("results").and_then(|r| r.as_array()) {
-            all_results.extend(results.clone());
-        }
+        let results = data
+            .get("results")
+            .and_then(|r| r.as_array())
+            .ok_or("No results found in response")?;
+        all_results.extend(results.clone());
 
         next_cursor = data
             .get("nextPageCursor")
