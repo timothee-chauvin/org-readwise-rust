@@ -149,6 +149,7 @@ async fn fetch_readwise_data(
         println!("Fetching {}...", url);
 
         let mut retry_count = 0;
+        let max_retries = 5;
         let response = loop {
             let response = client
                 .get(&url)
@@ -160,16 +161,34 @@ async fn fetch_readwise_data(
             match status {
                 StatusCode::OK => break response,
                 StatusCode::TOO_MANY_REQUESTS => {
-                    println!("{} - {}", status, response.text().await?);
-                    // Note: the response text looks like {"detail":"Request was throttled. Expected available in 50 seconds."}
-                    // We could parse this, but the format isn't guaranteed to remain the same, so we do something simple instead.
-                    let wait_s = match retry_count {
-                        0 => 60,
-                        1 => 120,
-                        2 => 240,
-                        _ => return Err("Still rate limited despite retries".into()),
+                    let response_text = response.text().await?;
+                    println!("{} - {}", status, response_text);
+                    if retry_count >= max_retries {
+                        return Err(format!(
+                            "Still getting rate limited despite {} retries",
+                            retry_count
+                        )
+                        .into());
+                    }
+                    // The response text looks like {"detail":"Request was throttled. Expected available in 50 seconds."}
+                    // Try to parse the wait time from response
+                    let wait_s = if let Some(seconds) = response_text
+                        .split("Expected available in ")
+                        .nth(1)
+                        .and_then(|s| s.split(' ').next())
+                        .and_then(|n| n.parse::<u64>().ok())
+                    {
+                        // Add 5 seconds buffer
+                        println!("Waiting {} seconds before retry...", seconds + 5);
+                        seconds + 5
+                    } else {
+                        // Default to 60s if parsing fails
+                        println!(
+                            "Failed to parse wait time from response. Waiting 60s before retry..."
+                        );
+                        60
                     };
-                    println!("Rate limited. Waiting {} seconds before retry...", wait_s);
+
                     sleep(Duration::from_secs(wait_s)).await;
                     retry_count += 1;
                 }
