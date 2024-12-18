@@ -1,4 +1,7 @@
 org_roam_dir = "~/org/roam"
 templates_dir = "templates/**/*"
 updated_after_file_path = "~/org-roam/org_readwise_rust_updated_after.txt"
-document_categories = ["epub", "article", "pdf"]
+document_categories = ["epub", "article", "pdf", "video"]
+
+[keep_query_params]
+"youtube.com" = ["v"]

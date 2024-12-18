@@ -1,7 +1,7 @@
 use config::{Config, File};
 use once_cell::sync::Lazy;
 use serde::Deserialize;
-use std::path::PathBuf;
+use std::{collections::HashMap, path::PathBuf};
 
 #[derive(Debug, Deserialize)]
 pub struct Settings {
@@ -10,6 +10,7 @@ pub struct Settings {
     pub templates_dir: PathBuf,
     pub updated_after_file_path: PathBuf,
     pub document_categories: Vec<String>,
+    pub keep_query_params: HashMap<String, Vec<String>>,
 }
 
 pub static SETTINGS: Lazy<Settings> = Lazy::new(|| {
